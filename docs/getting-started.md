@@ -127,15 +127,16 @@ Canonical parameters (`model`, `input`, `tools`, `reasoning`) always take preced
 | --- | --- |
 | `str` | Shorthand for `UserMessage(content=...)` |
 | `UserMessage` | A user turn |
+| `SystemPrompt` | System instructions |
 | `FunctionToolResult` | The result of a function call the model asked for |
 | Any item from `response.output` | The model's earlier output, replayed from its native `raw` form |
 
 So to continue a conversation, you append the model's output to your history:
 
 ```python
-from tessaract import UserMessage
+from tessaract import SystemPrompt, UserMessage
 
-history = [UserMessage(content="My name is Ada.")]
+history = [SystemPrompt(content="Answer concisely."), UserMessage(content="My name is Ada.")]
 response = client.send(model="oai/gpt-5.6-luna", input=history)
 history.extend(response.output)
 
@@ -147,6 +148,38 @@ print(response.output_text)   # "Your name is Ada."
 Every output item keeps the provider's native object in `.raw`. When you send it back, Tessaract passes the raw object as-is, so the history stays lossless. Reasoning items, message IDs and anything else the provider needs for the next turn are preserved.
 
 > Append **all** of `response.output`, not only the text. Reasoning models perform best, and function calling only works, when earlier reasoning items and function calls are sent back with their results.
+
+### A simple chat loop
+
+With `OPENAI_API_KEY` set as above, save this example as `chat.py` and run `python chat.py`:
+
+```python
+from tessaract import OpenAIProvider, Tessaract, UserMessage
+
+client = Tessaract(providers={"oai": OpenAIProvider()})
+history = []
+
+print("Chat with Tessaract. Type /exit to quit.")
+
+while True:
+    try:
+        message = input("You: ").strip()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        break
+
+    if message.lower() == "/exit":
+        break
+    if not message:
+        continue
+
+    history.append(UserMessage(content=message))
+    response = client.send(model="oai/gpt-6-luna", input=history)
+    print(f"Assistant: {response.output_text}")
+    history.extend(response.output)
+```
+
+The loop sends the full conversation on each turn. It stores every item in `response.output`, so a follow-up question has the context from earlier replies. No tools are involved.
 
 ## Inspecting output
 

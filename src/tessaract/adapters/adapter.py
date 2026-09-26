@@ -10,6 +10,10 @@ class UserMessageProtocol(Protocol):
     role: Literal["user"] = "user"
     content: str | list[dict]
 
+class SystemPromptProtocol(Protocol):
+    role: Literal["system"] = "system"
+    content: str | list[dict]
+
 class FunctionToolResultProtocol(Protocol):
     type: Literal["function_tool_result"] = "function_tool_result"
     call_id: str
@@ -36,7 +40,7 @@ class Adapter:
     def __init__(self, provider: Provider):
         self._provider = provider
 
-    def map_input_message(self, item: UserMessageProtocol) -> Any:
+    def map_input_message(self, item: UserMessageProtocol | SystemPromptProtocol) -> Any:
         raise NotImplementedError("not yet implemented...")
 
     def map_tool_result(self, item: FunctionToolResultProtocol) -> Any:
@@ -50,6 +54,3 @@ class Adapter:
     
     def map_reasoning(self, item: ReasoningProtocol) -> Any:
         raise NotImplementedError("not yet implemented")
-
-
-

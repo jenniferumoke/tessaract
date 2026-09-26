@@ -35,6 +35,7 @@ from ..adapter import (
     FunctionToolResultProtocol,
     FunctionToolSchemaProtocol,
     ReasoningParamsProtocol,
+    SystemPromptProtocol,
     UserMessageProtocol,
 )
 
@@ -44,7 +45,7 @@ class OpenAIAdapter(Adapter):
         super().__init__(provider)
         self._client = provider.client
 
-    def map_input_message(self, item: UserMessageProtocol):
+    def map_input_message(self, item: UserMessageProtocol | SystemPromptProtocol):
         return {
             "role": item.role,
             "content": item.content

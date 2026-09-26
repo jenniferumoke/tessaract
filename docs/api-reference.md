@@ -7,7 +7,7 @@ from tessaract import (
     Tessaract,
     OpenAIProvider,
     FunctionTool, InputSchema, Property,
-    UserMessage, FunctionToolResult,
+    UserMessage, SystemPrompt, FunctionToolResult,
     ReasoningOptions,
 )
 ```
@@ -183,6 +183,15 @@ See [Tool calling](tool-calling.md).
 | `content` | `str \| list[dict]` | required |
 
 `content` can be a list of native content parts, such as OpenAI `input_text` / `input_image` dicts, for multimodal input.
+
+### `SystemPrompt`
+
+| Field | Type | Default |
+| --- | --- | --- |
+| `role` | `"system"` | `"system"` |
+| `content` | `str \| list[dict]` | required |
+
+Use `SystemPrompt(content="...")` in an input list to provide system instructions. It is mapped to an OpenAI input message with the `system` role.
 
 ### `FunctionToolResult`
 

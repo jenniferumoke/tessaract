@@ -16,6 +16,13 @@ class UserMessage(InputType):
     def raw(self, adapter: Adapter):
         return adapter.map_input_message(self)
 
+class SystemPrompt(InputType):
+    role: Literal["system"] = "system"
+    content: str | list[dict]
+
+    def raw(self, adapter: Adapter):
+        return adapter.map_input_message(self)
+
 class FunctionToolResult(InputType):
     type: Literal["function_tool_result"] = "function_tool_result"
     call_id: str
@@ -24,4 +31,3 @@ class FunctionToolResult(InputType):
 
     def raw(self, adapter: Adapter):
         return adapter.map_tool_result(self)
-
