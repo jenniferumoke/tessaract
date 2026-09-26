@@ -36,12 +36,6 @@ response = client.send(model="oai/gpt-5.6-luna", input="Say hello in five words.
 print(response.output_text)
 ```
 
-- `providers` maps a **prefix** (`"oai"`) to a provider instance. You can pick any prefix.
-- `model` is always `"<prefix>/<model-name>"`. Tessaract uses the prefix to choose the provider and sends the rest to the API.
-- `input` accepts a string, or a list of strings and message objects (see below).
-
-> If you leave out `api_key`, `OpenAIProvider` reads `OPENAI_API_KEY` from the environment. It raises `ValueError` if neither is set.
-
 ---
 
 ## Contents
