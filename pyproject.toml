@@ -1,20 +1,27 @@
 [project]
 name = "tessaract"
 version = "0.1.0"
-description = "Provider-agnostic interface for AI inference"
+description = "Provider-agnostic SDK for building AI agents natively"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "pydantic>=2.10,<3"   
 ]
-
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    { "name" = "Jennifer Umoke" },
+]
 [project.optional-dependencies]
 openai = [
     "openai>=2.45.0",
 ]
-anthropic = [
-    "anthropic>=0.116.0",
-]
+
+
+[project.urls]
+Repository = "https://github.com/Chinenyay/tessaract"
+Issues = "https://github.com/Chinenyay/tessaract/issues"
+Documentation = "https://github.com/Chinenyay/tessaract/blob/main/README.md"
 
 [build-system]
 requires = ["uv_build>=0.12.13, <0.13"]

@@ -10,7 +10,7 @@ More concretely, Tessaract exposes a **canonical model of the LLM ecosystem**: r
 
 
 > **BUILD IN PROGRESS ⛏️🛠️🚜**
-> OpenAI (via the Responses API) is the only provider implemented today. Anthropic support is planned.
+> OpenAI (via the Responses API) is the only provider implemented today. Anthropic support in progress.
 
 
 ## Quickstart
