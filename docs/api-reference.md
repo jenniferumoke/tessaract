@@ -217,10 +217,13 @@ Use `SystemPrompt(content="...")` in an input list to provide system instruction
 | `status` | `ResponseStatus \| str` | e.g. `"completed"` or `"incomplete"` |
 | `provider` | `Provider \| None` | The provider that produced the response |
 | `output` | `list[OutputType]` | Typed output items, in order |
+| `usage` | `Usage \| None` | Normalized token counts when the provider reports usage |
 | `error` | `ResponseError \| None` | Set if the provider reports an error |
 | `raw_response` | `Any` | The native SDK response object |
 | `output_text` *(property)* | `str` | All assistant message text joined together |
 | `response_id` *(property)* | `str` | An alias for `id` |
+
+`Usage` includes `input_tokens`, `output_tokens`, `total_tokens`, `cached_input_tokens`, `cache_write_input_tokens`, and `reasoning_tokens`. The detail fields are `None` when the provider does not report them. `OpenAIResponse.provider_usage` holds the native OpenAI SDK usage object, or `None` when usage is unavailable. Completed streaming responses expose both fields through `ResponseCompletedEvent.response`.
 
 ### `ResponseStatus`
 

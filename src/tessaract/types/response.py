@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 from dataclasses import dataclass, field
-from typing import Any
 from enum import Enum
+from typing import TYPE_CHECKING, Any
 
 from ..providers.openai_provider import OpenAIProvider
 from ..providers.provider import Provider
@@ -9,6 +11,9 @@ from .output_types import (
     OutputType,
     TextOutputItem,
 )
+
+if TYPE_CHECKING:
+    from openai.types.responses.response_usage import ResponseUsage
 
 
 @dataclass
@@ -26,18 +31,29 @@ class ResponseStatus(str, Enum):
 
 
 @dataclass
+class Usage:
+    input_tokens: int
+    output_tokens: int
+
+    total_tokens: int | None = None
+
+    cached_input_tokens: int | None = None
+    cache_write_input_tokens: int | None = None
+    reasoning_tokens: int | None = None
+
+
+@dataclass
 class Response:
     id: str
     model: str
     status: ResponseStatus
-    provider: Provider  | None = None
-
+    provider: Provider | None = None
 
     output: list[OutputType] = field(
         default_factory=list,
     )
 
-    # usage: Usage | None = None
+    usage: Usage | None = None
     error: ResponseError | None = None
 
     # finish_details: FinishDetails | None = None
@@ -69,5 +85,7 @@ class Response:
         return self.id
 
 
+@dataclass
 class OpenAIResponse(Response):
     provider: OpenAIProvider
+    provider_usage: ResponseUsage | None = field(default=None, repr=False)

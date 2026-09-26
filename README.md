@@ -250,12 +250,13 @@ src/tessaract/
 - Function tools with parallel calls
 - Reasoning effort and summaries
 - Pass-through request options
+- Token usage on `Response`, including OpenAI usage details
 
 **Planned:**
 
 - Anthropic provider and adapter
 - Google GenAI provider and adapter
-- Token usage and finish details on `Response`
+- Finish details on `Response`
 - TestProvider for CI and testing without making live API calls
 - built-in utils: agent loop helper, tool schema autowriter
 - Token counting

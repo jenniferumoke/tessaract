@@ -15,7 +15,7 @@ from ...types.output_types import (
     TextOutputItem,
 )
 from ...types.request import Request
-from ...types.response import OpenAIResponse, ResponseError
+from ...types.response import OpenAIResponse, ResponseError, Usage
 from ...types.streaming.event_types import (
     CustomProviderEvent,
     FunctionCallArgumentDeltaEvent,
@@ -300,6 +300,20 @@ class OpenAIAdapter(Adapter):
 
 
     def _normalize_response(self, raw_response) -> OpenAIResponse:
+        provider_usage = raw_response.usage
+        usage = None
+        if provider_usage is not None:
+            input_details = provider_usage.input_tokens_details
+            output_details = provider_usage.output_tokens_details
+            usage = Usage(
+                input_tokens=provider_usage.input_tokens,
+                output_tokens=provider_usage.output_tokens,
+                total_tokens=provider_usage.total_tokens,
+                cached_input_tokens=input_details.cached_tokens if input_details is not None else None,
+                cache_write_input_tokens=input_details.cache_write_tokens if input_details is not None else None,
+                reasoning_tokens=output_details.reasoning_tokens if output_details is not None else None,
+            )
+
         return OpenAIResponse(
             id=raw_response.id,
             model=raw_response.model,
@@ -307,7 +321,9 @@ class OpenAIAdapter(Adapter):
             provider=self._provider,
             output=self._normalize_output(raw_response.output),
             error=ResponseError(message=raw_response.error.message, code=raw_response.error.code) if raw_response.error else None,
-            raw_response=raw_response
+            usage=usage,
+            provider_usage=provider_usage,
+            raw_response=raw_response,
         )
 
     def _build_request_kwargs(self, request: Request):
