@@ -4,7 +4,6 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
-from ..providers.openai_provider import OpenAIProvider
 from ..providers.provider import Provider
 from .output_types import (
     AssistantMessage,
@@ -87,5 +86,12 @@ class Response:
 
 @dataclass
 class OpenAIResponse(Response):
-    provider: OpenAIProvider
     provider_usage: ResponseUsage | None = field(default=None, repr=False)
+
+    @property
+    def input_tokens(self) -> int | None:
+        return self.usage.input_tokens if self.usage is not None else None
+
+    @property
+    def cached_input_tokens(self) -> int | None:
+        return self.usage.cached_input_tokens if self.usage is not None else None

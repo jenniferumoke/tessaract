@@ -225,6 +225,8 @@ Use `SystemPrompt(content="...")` in an input list to provide system instruction
 
 `Usage` includes `input_tokens`, `output_tokens`, `total_tokens`, `cached_input_tokens`, `cache_write_input_tokens`, and `reasoning_tokens`. The detail fields are `None` when the provider does not report them. `OpenAIResponse.provider_usage` holds the native OpenAI SDK usage object, or `None` when usage is unavailable. Completed streaming responses expose both fields through `ResponseCompletedEvent.response`.
 
+`OpenAIResponse.input_tokens` and `OpenAIResponse.cached_input_tokens` provide direct access to the corresponding normalized usage counts. Each returns `None` when usage is unavailable; `cached_input_tokens` is also `None` when the provider does not report that detail.
+
 ### `ResponseStatus`
 
 A `str` enum with the values `queued`, `in_progress`, `completed`, `incomplete`, `failed` and `cancelled`.
