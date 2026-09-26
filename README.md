@@ -70,7 +70,7 @@ Then send your first request:
 from tessaract import OpenAIProvider, Tessaract
 
 client = Tessaract(providers={"oai": OpenAIProvider()})
-response = client.send(model="oai/gpt-5.6-luna", input="Say hello in five words.")
+response = client.send(model="oai/gpt-6-luna", input="Say hello in five words.")
 
 print(response.output_text)
 ```
