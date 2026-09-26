@@ -1,13 +1,46 @@
 # Tessaract
 
-A model-agnostic API for building AI agents.
+A provider-agnostic SDK for building AI agents natively.
 
-Tessaract exposes a **canonical model of the LLM ecosystem**: requests, responses, content, streaming events, tools, usage, errors and reasoning. You write your agent once against Tessaract's types, and a provider **adapter** translates to and from each vendor's native API.
+Tessaract exists to make it straightforward to build agents that work across multiple providers. It is an unopinionated portal to multi-model intelligence giving you model diversity and full control over how you compose models in your applications. 
 
-The goal of Tessaract is to make it straightforward to build agents that work across multiple providers.
+With a single SDK, you can build an agent loop that supports both Anthropic and OpenAI models with full support for native caching, reasoning and tool calling.
+
+More concretely, Tessaract exposes a **canonical model of the LLM ecosystem**: requests, responses, content, streaming events, tools, usage, errors and reasoning. You write an agent loop once against Tessaract's types, and a provider **adapter** translates to and from each vendor's native API.
+
 
 > **BUILD IN PROGRESS ⛏️🛠️🚜**
 > OpenAI (via the Responses API) is the only provider implemented today. Anthropic support is planned.
+
+
+## Quickstart
+
+Set your OPENAI_API_KEY:
+
+```bash
+export OPENAI_API_KEY="sk..."
+```
+
+Make your first request:
+```python
+import os
+
+from tessaract import OpenAIProvider, Tessaract
+
+client = Tessaract(
+    providers={"oai": OpenAIProvider(api_key=os.environ["OPENAI_API_KEY"])}
+)
+
+response = client.send(model="oai/gpt-5.6-luna", input="Say hello in five words.")
+
+print(response.output_text)
+```
+
+- `providers` maps a **prefix** (`"oai"`) to a provider instance. You can pick any prefix.
+- `model` is always `"<prefix>/<model-name>"`. Tessaract uses the prefix to choose the provider and sends the rest to the API.
+- `input` accepts a string, or a list of strings and message objects (see below).
+
+> If you leave out `api_key`, `OpenAIProvider` reads `OPENAI_API_KEY` from the environment. It raises `ValueError` if neither is set.
 
 ---
 
@@ -38,53 +71,7 @@ The goal of Tessaract is to make it straightforward to build agents that work ac
 
 ## Installation
 
-Tessaract requires **Python 3.11+**. It isn't on PyPI yet, so install it from source.
-
-With [uv](https://docs.astral.sh/uv/):
-
-```bash
-git clone <this-repo-url> tessaract
-cd tessaract
-uv sync --extra openai
-```
-
-With pip:
-
-```bash
-pip install -e ".[openai]"
-```
-
-The `openai` extra installs the OpenAI SDK (`openai>=2.45.0`). Without it, creating an `OpenAIProvider` raises an `ImportError`.
-
-Set your API key:
-
-```bash
-export OPENAI_API_KEY="sk-..."
-```
-
----
-
-## Quickstart
-
-```python
-import os
-
-from tessaract import OpenAIProvider, Tessaract
-
-client = Tessaract(
-    providers={"oai": OpenAIProvider(api_key=os.environ["OPENAI_API_KEY"])}
-)
-
-response = client.send(model="oai/gpt-5.6-luna", input="Say hello in five words.")
-
-print(response.output_text)
-```
-
-- `providers` maps a **prefix** (`"oai"`) to a provider instance. You can pick any prefix.
-- `model` is always `"<prefix>/<model-name>"`. Tessaract uses the prefix to choose the provider and sends the rest to the API.
-- `input` accepts a string, or a list of strings and message objects (see below).
-
-> If you leave out `api_key`, `OpenAIProvider` reads `OPENAI_API_KEY` from the environment. It raises `ValueError` if neither is set.
+Tessaract requires **Python 3.11+**. 
 
 ---
 
@@ -263,7 +250,9 @@ src/tessaract/
 **Planned:**
 
 - Anthropic provider and adapter
+- Google GenAI provider and adapter
 - Token usage and finish details on `Response`
-- A built-in agent loop helper
+- TestProvider for CI and testing without making live API calls
+- built-in utils: agent loop helper, tool schema autowriter
 - Token counting
-- Workflows
+
