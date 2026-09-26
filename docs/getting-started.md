@@ -2,17 +2,27 @@
 
 This guide covers installing Tessaract, configuring the OpenAI provider, sending requests, and keeping conversation history across turns.
 
-## Install
+## Installation
 
-Tessaract requires **Python 3.11+**. From the repository root:
+Tessaract requires **Python 3.11+**. Install the `openai` extra to use the OpenAI provider:
 
 ```bash
-uv sync --extra openai        # or: pip install -e ".[openai]"
+python -m pip install "tessaract[openai]"
 ```
 
-The `openai` extra pulls in `openai>=2.45.0`. Tessaract imports the SDK lazily, so if you create an `OpenAIProvider` without it installed, you get an `ImportError` that tells you to run `pip install "tessaract[openai]"`.
+If you use uv, add it to your project with `uv add "tessaract[openai]"`.
+
+To work from a checkout of this repository, run `uv sync --extra openai` or `python -m pip install -e ".[openai]"` from the repository root.
+
+The extra installs the OpenAI SDK. Tessaract imports it only when you create an `OpenAIProvider`, so installing the core package alone is possible, but the OpenAI provider will ask you to install the extra before use.
 
 ## Configure a provider
+
+Set your OpenAI API key in your shell:
+
+```bash
+export OPENAI_API_KEY="your-api-key"
+```
 
 ```python
 import os

@@ -4,37 +4,12 @@ A provider-agnostic SDK for building AI agents natively.
 
 Tessaract exists to make it straightforward to build agents that work across multiple providers. It is an unopinionated portal to multi-model intelligence giving you model diversity and full control over how you compose models in your applications. 
 
-With a single SDK, you can build an agent loop that supports both Anthropic and OpenAI models with full support for native caching, reasoning and tool calling.
+Today, Tessaract supports OpenAI's Responses API, including streaming, reasoning, and tool calling. More provider adapters are planned.
 
 More concretely, Tessaract exposes a **canonical model of the LLM ecosystem**: requests, responses, content, streaming events, tools, usage, errors and reasoning. You write an agent loop once against Tessaract's types, and a provider **adapter** translates to and from each vendor's native API.
 
 
-> **BUILD IN PROGRESS ⛏️🛠️🚜**
-> OpenAI (via the Responses API) is the only provider implemented today. Anthropic support in progress.
-
-
-## Quickstart
-
-Set your OPENAI_API_KEY:
-
-```bash
-export OPENAI_API_KEY="sk..."
-```
-
-Make your first request:
-```python
-import os
-
-from tessaract import OpenAIProvider, Tessaract
-
-client = Tessaract(
-    providers={"oai": OpenAIProvider(api_key=os.environ["OPENAI_API_KEY"])}
-)
-
-response = client.send(model="oai/gpt-5.6-luna", input="Say hello in five words.")
-
-print(response.output_text)
-```
+> **Status:** OpenAI is the only supported provider today. Anthropic support is in progress.
 
 ---
 
@@ -53,7 +28,7 @@ print(response.output_text)
 
 ## Features
 
-- **One client, many providers.** Register providers under a prefix and address models as `"<prefix>/<model>"`, e.g. `"oai/gpt-5.6-luna"`.
+- **Provider prefixes.** Register a provider under a prefix and address models as `"<prefix>/<model>"`, e.g. `"oai/gpt-5.6-luna"`.
 - **Canonical tools.** Define function tools once with `FunctionTool` / `InputSchema` / `Property`, including nested objects, arrays, enums and nullable fields. The adapter emits the provider's native schema.
 - **Canonical reasoning.** Control effort and summaries with `ReasoningOptions`; read reasoning back as `ReasoningOutputItem`s.
 - **Typed output.** Responses contain `AssistantMessage`, `ReasoningOutputItem`, `FunctionCallOutputItem` and `ProviderOutputItem` objects. Function-call arguments are already parsed into a `dict`.
@@ -65,7 +40,42 @@ print(response.output_text)
 
 ## Installation
 
-Tessaract requires **Python 3.11+**. 
+Tessaract requires **Python 3.11+**. Install the `openai` extra to use the currently supported provider.
+
+With pip:
+
+```bash
+python -m pip install "tessaract[openai]"
+```
+
+With uv:
+
+```bash
+uv add "tessaract[openai]"
+```
+
+---
+
+## Quickstart
+
+Set your OpenAI API key:
+
+```bash
+export OPENAI_API_KEY="your-api-key"
+```
+
+Then send your first request:
+
+```python
+from tessaract import OpenAIProvider, Tessaract
+
+client = Tessaract(providers={"oai": OpenAIProvider()})
+response = client.send(model="oai/gpt-5.6-luna", input="Say hello in five words.")
+
+print(response.output_text)
+```
+
+`OpenAIProvider` reads `OPENAI_API_KEY` from the environment. The `oai` prefix is your choice; Tessaract sends the model name after `/` to OpenAI. See the [getting started guide](https://github.com/Chinenyay/tessaract/blob/main/docs/getting-started.md) for configuration and multi-turn conversations.
 
 ---
 
@@ -161,7 +171,7 @@ history: list = []
 print(run_agent(history, "What's the weather in Paris, and what time is it?"))
 ```
 
-The step-by-step walkthrough is in **[docs/building-an-agent.md](docs/building-an-agent.md)**, and runnable versions are in [`examples/`](examples/).
+The step-by-step walkthrough is in the [building an agent guide](https://github.com/Chinenyay/tessaract/blob/main/docs/building-an-agent.md), with runnable versions in [`examples/`](https://github.com/Chinenyay/tessaract/tree/main/examples).
 
 ---
 
@@ -191,7 +201,7 @@ for event in client.send(
 history.extend(completed.output)
 ```
 
-See **[docs/streaming.md](docs/streaming.md)** for the full event list.
+See the [streaming guide](https://github.com/Chinenyay/tessaract/blob/main/docs/streaming.md) for the full event list.
 
 ---
 
@@ -199,13 +209,13 @@ See **[docs/streaming.md](docs/streaming.md)** for the full event list.
 
 | Guide | What it covers |
 | --- | --- |
-| [Getting started](docs/getting-started.md) | Installing, configuring providers, sending your first request, and building multi-turn history |
-| [Building an agent](docs/building-an-agent.md) | A step-by-step tutorial for an agent with reasoning and tool calling, both synchronous and streaming |
-| [Tool calling](docs/tool-calling.md) | `FunctionTool`, `InputSchema`, `Property`, strict mode, tool results and `provider_options` |
-| [Reasoning](docs/reasoning.md) | `ReasoningOptions`, effort levels, summaries, and reading and preserving reasoning items |
-| [Streaming](docs/streaming.md) | Every canonical stream event, and how to build a streaming agent loop |
-| [API reference](docs/api-reference.md) | Every public class, field and method |
-| [Architecture](docs/architecture.md) | Canonical types, adapters and providers, and how to add a new provider |
+| [Getting started](https://github.com/Chinenyay/tessaract/blob/main/docs/getting-started.md) | Installing, configuring providers, sending your first request, and building multi-turn history |
+| [Building an agent](https://github.com/Chinenyay/tessaract/blob/main/docs/building-an-agent.md) | A step-by-step tutorial for an agent with reasoning and tool calling, both synchronous and streaming |
+| [Tool calling](https://github.com/Chinenyay/tessaract/blob/main/docs/tool-calling.md) | `FunctionTool`, `InputSchema`, `Property`, strict mode, tool results and `provider_options` |
+| [Reasoning](https://github.com/Chinenyay/tessaract/blob/main/docs/reasoning.md) | `ReasoningOptions`, effort levels, summaries, and reading and preserving reasoning items |
+| [Streaming](https://github.com/Chinenyay/tessaract/blob/main/docs/streaming.md) | Every canonical stream event, and how to build a streaming agent loop |
+| [API reference](https://github.com/Chinenyay/tessaract/blob/main/docs/api-reference.md) | Every public class, field and method |
+| [Architecture](https://github.com/Chinenyay/tessaract/blob/main/docs/architecture.md) | Canonical types, adapters and providers, and how to add a new provider |
 
 ---
 
@@ -249,4 +259,3 @@ src/tessaract/
 - TestProvider for CI and testing without making live API calls
 - built-in utils: agent loop helper, tool schema autowriter
 - Token counting
-
