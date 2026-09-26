@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Build and check distributions
+        run: |
+          python -m pip install build twine
+          python -m build
+          python -m twine check --strict dist/*
+
+      - name: Install built wheel with OpenAI support
+        run: python -m pip install "$(printf '%s\n' dist/*.whl)[openai]"
+
+      - name: Check installed package
+        run: |
+          python -I -c 'from tessaract import OpenAIProvider, Tessaract; client = Tessaract({"oai": OpenAIProvider(api_key="test")}); print("Installed package works:", client.__class__.__name__)'
