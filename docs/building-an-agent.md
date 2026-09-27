@@ -10,8 +10,8 @@ This tutorial builds a small agent on OpenAI's reasoning models with Tessaract. 
 
 Runnable code for this guide:
 
-- [`examples/agent.py`](../examples/agent.py) is the synchronous agent
-- [`examples/streaming_agent.py`](../examples/streaming_agent.py) is the streaming agent
+- [`examples/agent.py`](https://github.com/jenniferumoke/tessaract/blob/main/examples/agent.py) is the synchronous agent
+- [`examples/streaming_agent.py`](https://github.com/jenniferumoke/tessaract/blob/main/examples/streaming_agent.py) is the streaming agent
 
 ---
 

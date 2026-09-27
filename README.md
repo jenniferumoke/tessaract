@@ -75,7 +75,7 @@ response = client.send(model="oai/gpt-6-luna", input="Say hello in five words.")
 print(response.output_text)
 ```
 
-`OpenAIProvider` reads `OPENAI_API_KEY` from the environment. The `oai` prefix is your choice; Tessaract sends the model name after `/` to OpenAI. For multi-turn conversations, try the [simple chat loop](https://github.com/jenniferumoke/tessaract/blob/main/docs/getting-started.md#a-simple-chat-loop).
+`OpenAIProvider` reads `OPENAI_API_KEY` from the environment. The `oai` prefix is your choice; Tessaract sends the model name after `/` to OpenAI. For multi-turn conversations, try the [simple chat loop](https://jenniferumoke.github.io/tessaract/getting-started/#a-simple-chat-loop).
 
 ---
 
@@ -171,7 +171,7 @@ history: list = []
 print(run_agent(history, "What's the weather in Paris, and what time is it?"))
 ```
 
-The step-by-step walkthrough is in the [building an agent guide](https://github.com/jenniferumoke/tessaract/blob/main/docs/building-an-agent.md), with runnable versions in [`examples/`](https://github.com/jenniferumoke/tessaract/tree/main/examples).
+The step-by-step walkthrough is in the [building an agent guide](https://jenniferumoke.github.io/tessaract/building-an-agent/), with runnable versions in [`examples/`](https://github.com/jenniferumoke/tessaract/tree/main/examples).
 
 ---
 
@@ -201,7 +201,7 @@ for event in client.send(
 history.extend(completed.output)
 ```
 
-See the [streaming guide](https://github.com/jenniferumoke/tessaract/blob/main/docs/streaming.md) for the full event list.
+See the [streaming guide](https://jenniferumoke.github.io/tessaract/streaming/) for the full event list.
 
 ---
 
@@ -209,13 +209,13 @@ See the [streaming guide](https://github.com/jenniferumoke/tessaract/blob/main/d
 
 | Guide | What it covers |
 | --- | --- |
-| [Getting started](https://github.com/jenniferumoke/tessaract/blob/main/docs/getting-started.md) | Installing, configuring providers, sending your first request, and building multi-turn history |
-| [Building an agent](https://github.com/jenniferumoke/tessaract/blob/main/docs/building-an-agent.md) | A step-by-step tutorial for an agent with reasoning and tool calling, both synchronous and streaming |
-| [Tool calling](https://github.com/jenniferumoke/tessaract/blob/main/docs/tool-calling.md) | `FunctionTool`, `InputSchema`, `Property`, strict mode, tool results and `provider_options` |
-| [Reasoning](https://github.com/jenniferumoke/tessaract/blob/main/docs/reasoning.md) | `ReasoningOptions`, effort levels, summaries, and reading and preserving reasoning items |
-| [Streaming](https://github.com/jenniferumoke/tessaract/blob/main/docs/streaming.md) | Every canonical stream event, and how to build a streaming agent loop |
-| [API reference](https://github.com/jenniferumoke/tessaract/blob/main/docs/api-reference.md) | Every public class, field and method |
-| [Architecture](https://github.com/jenniferumoke/tessaract/blob/main/docs/architecture.md) | Canonical types, adapters and providers, and how to add a new provider |
+| [Getting started](https://jenniferumoke.github.io/tessaract/getting-started/) | Installing, configuring providers, sending your first request, and building multi-turn history |
+| [Building an agent](https://jenniferumoke.github.io/tessaract/building-an-agent/) | A step-by-step tutorial for an agent with reasoning and tool calling, both synchronous and streaming |
+| [Tool calling](https://jenniferumoke.github.io/tessaract/tool-calling/) | `FunctionTool`, `InputSchema`, `Property`, strict mode, tool results and `provider_options` |
+| [Reasoning](https://jenniferumoke.github.io/tessaract/reasoning/) | `ReasoningOptions`, effort levels, summaries, and reading and preserving reasoning items |
+| [Streaming](https://jenniferumoke.github.io/tessaract/streaming/) | Every canonical stream event, and how to build a streaming agent loop |
+| [API reference](https://jenniferumoke.github.io/tessaract/api-reference/) | Every public class, field and method |
+| [Architecture](https://jenniferumoke.github.io/tessaract/architecture/) | Canonical types, adapters and providers, and how to add a new provider |
 
 ---
 

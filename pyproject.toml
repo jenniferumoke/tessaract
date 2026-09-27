@@ -21,9 +21,8 @@ openai = [
 [project.urls]
 Repository = "https://github.com/Chinenyay/tessaract"
 Issues = "https://github.com/Chinenyay/tessaract/issues"
-Documentation = "https://github.com/Chinenyay/tessaract/blob/main/README.md"
+Documentation = "https://jenniferumoke.github.io/tessaract/"
 
 [build-system]
 requires = ["uv_build>=0.12.13, <0.13"]
 build-backend = "uv_build"
-

@@ -90,7 +90,7 @@ def stream_turn(history, user_text):
             history.append(FunctionToolResult(call_id=call.call_id, result=result))
 ```
 
-The complete runnable version is [`examples/streaming_agent.py`](../examples/streaming_agent.py).
+The complete runnable version is [`examples/streaming_agent.py`](https://github.com/jenniferumoke/tessaract/blob/main/examples/streaming_agent.py).
 
 ## Notes
 
