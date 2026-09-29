@@ -207,6 +207,8 @@ See the [streaming guide](https://jenniferumoke.github.io/tessaract/streaming/) 
 
 ## Documentation
 
+The documentation site is [jenniferumoke.github.io/tessaract](https://jenniferumoke.github.io/tessaract/).
+
 | Guide | What it covers |
 | --- | --- |
 | [Getting started](https://jenniferumoke.github.io/tessaract/getting-started/) | Installing, configuring providers, sending your first request, and building multi-turn history |
