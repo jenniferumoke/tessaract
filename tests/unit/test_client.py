@@ -32,7 +32,7 @@ def test_mixed_input_list_is_converted_in_order(client):
         input=[
             SystemPrompt(content="be brief"),
             "hi",
-            FunctionToolResult(call_id="1", result="ok")
+            FunctionToolResult(call_id="c1", result="ok")
         ],
         reasoning=None, tools=[], request_options={}, stream=False
     )
@@ -40,5 +40,14 @@ def test_mixed_input_list_is_converted_in_order(client):
     assert request.input == [
         {"role": "system", "content": "be brief"},
         {"role": "user", "content": "hi"},
-        {"type": "function_call_output", "call_id": "c1", "result": "ok"}
+        {"type": "function_call_output", "call_id": "c1", "output": "ok"}
     ]
+
+def test_unsupported_input_type_raises_type_error(client):
+    with pytest.raises(TypeError, match="Unsupported input type: int"):
+        client.send(model="oai/gpt-latest", input=[42])
+
+def test_send_with_stream_true_generates_stream(client, monkeypatch):
+    adapter = client.adapters["oai"]
+    monkeypatch.setattr(adapter, "generate_stream", lambda request: ["streamed", request.stream])
+    assert client.send(model="oai/gpt-latest", input="hi", stream=True) == ["streamed", True]
