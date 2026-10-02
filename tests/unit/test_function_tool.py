@@ -28,8 +28,8 @@ def test_input_schema_rejects_required_name_that_is_not_a_property():
     with pytest.raises(ValidationError, match="undefined properties"):
         InputSchema(properties={"city": Property(type="string")}, required=["country"])
 
-def test_nullable_property_is_accepted():
-    prop =  Property(
+def test_nullable_object_is_accepted():
+    prop = Property(
         type=["object", "null"],
         properties={"city": Property(type="string")},
         required=["city"]
