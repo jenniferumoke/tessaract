@@ -77,3 +77,9 @@ def test_canonical_request_params_win_over_provider_options(openai_adapter):
     kwargs = openai_adapter._build_request_kwargs(request)
     assert kwargs["model"] == "gpt-test"
     assert kwargs["temperature"] == 0.2
+
+def test_content_part_tool_result_is_not_json_encoded(openai_adapter):
+    parts = [{"type": "input_text", "text": "19C"}]
+
+    native = openai_adapter.map_tool_result(FunctionToolResult(call_id="c1", result=parts))
+    assert native["output"] == parts
