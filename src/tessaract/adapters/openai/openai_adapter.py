@@ -7,6 +7,7 @@ from openai.types.shared_params import Reasoning as OpenAIReasoningParams
 from ...providers.openai_provider import OpenAIProvider
 from ...tools.function import InputSchema, Property
 from ...types.output_types import (
+    Annotation,
     AssistantMessage,
     FunctionCallOutputItem,
     ProviderOutputItem,
@@ -163,11 +164,22 @@ class OpenAIAdapter(Adapter):
         }
 
         
+    def _normalize_annotation(self, annotation) -> Annotation:
+        provider_type = annotation.type
+        return Annotation(
+            type="file_path" if provider_type == "file_path" else "citation",
+            provider="openai",
+            provider_type=provider_type,
+            source=getattr(annotation, "url", None) or getattr(annotation, "file_id", None),
+            title=getattr(annotation, "title", None) or getattr(annotation, "filename", None),
+            cited_text=getattr(annotation, "cited_text", None),
+            provider_metadata=annotation.model_dump(mode="json"),
+        )
+
     def _normalize_output_item(self, output_item) -> OutputType:
         if output_item.type == "message" and (
             output_item.content is None or any(
                 part.type != "output_text"
-                or bool(getattr(part, "annotations", []))
                 for part in output_item.content
             )
         ):
@@ -181,7 +193,10 @@ class OpenAIAdapter(Adapter):
                             TextOutputItem(
                                 raw=i,
                                 text=i.text,
-                                annotations=i.annotations
+                                annotations=[
+                                    self._normalize_annotation(annotation)
+                                    for annotation in i.annotations
+                                ]
                             )
                             for i in output_item.content
                         ]
@@ -318,7 +333,6 @@ class OpenAIAdapter(Adapter):
             id=raw_response.id,
             model=raw_response.model,
             status=raw_response.status,
-            provider=self._provider,
             output=self._normalize_output(raw_response.output),
             error=ResponseError(message=raw_response.error.message, code=raw_response.error.code) if raw_response.error else None,
             usage=usage,

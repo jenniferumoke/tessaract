@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from ..providers.provider import Provider
 from .output_types import (
@@ -28,6 +28,15 @@ class ResponseStatus(str, Enum):
     FAILED = "failed"
     CANCELLED = "cancelled"
 
+class StopReason(str, Enum):
+    END_TURN = "end_turn"
+    MAX_TOKENS = "max_tokens"
+    STOP_SEQUENCE = "stop_sequence"
+    TOOL_USE = "tool_use"
+    PAUSE_TURN = "pause_turn"
+    COMPACTION =  "compaction"
+    REFUSAL = "refusal"
+    MODEL_CONTEXT_WINDOW_EXCEEDED = "model_context_window_exceeded"
 
 @dataclass
 class Usage:
@@ -45,8 +54,7 @@ class Usage:
 class Response:
     id: str
     model: str
-    status: ResponseStatus
-    provider: Provider | None = None
+    provider: Literal["anthropic", "openai"] | None = None
 
     output: list[OutputType] = field(
         default_factory=list,
@@ -86,7 +94,9 @@ class Response:
 
 @dataclass
 class OpenAIResponse(Response):
+    provider: Literal["openai"] = "openai"
     provider_usage: ResponseUsage | None = field(default=None, repr=False)
+    status: ResponseStatus = field(kw_only=True)
 
     @property
     def input_tokens(self) -> int | None:
@@ -95,3 +105,19 @@ class OpenAIResponse(Response):
     @property
     def cached_input_tokens(self) -> int | None:
         return self.usage.cached_input_tokens if self.usage is not None else None
+
+@dataclass
+class AnthropicResponse(Response):
+    provider: Literal["anthropic"] = "anthropic"
+    stop_reason: StopReason = field(kw_only=True)
+
+    provider_usage: ResponseUsage | None = field(default=None, repr=False)
+    
+    @property
+    def input_tokens(self) -> int | None:
+        return self.usage.input_tokens if self.usage is not None else None
+
+    @property
+    def cached_input_tokens(self) -> int | None:
+        return self.usage.cached_input_tokens if self.usage is not None else None
+

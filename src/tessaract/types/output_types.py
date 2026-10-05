@@ -2,21 +2,18 @@ from typing import Any, Literal, TypeAlias
 
 from pydantic import BaseModel, Field
 
-from ..providers.provider import Provider
-
-
 class OutputItem(BaseModel):
     raw: Any
 
 class Annotation(BaseModel):
-    type: Literal["citation"] = "citation"
+    type: Literal["citation", "file_path"] = "citation"
+    provider_type: str | None = None
 
     source: str | None = None
     title: str | None = None
     cited_text: str | None = None
 
-    provider: Provider
-    provider_annotation_type: str
+    provider: Literal["anthropic", "openai"]
 
     provider_metadata: dict[str, Any] = Field(
         default_factory=dict,

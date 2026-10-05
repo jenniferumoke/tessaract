@@ -12,11 +12,17 @@ license-files = ["LICENSE"]
 authors = [
     { "name" = "Jennifer Umoke" },
 ]
+
 [project.optional-dependencies]
 openai = [
-    "openai>=2.45.0",
+    "openai>=2.45.0"
 ]
-
+anthropic = [
+    "anthropic>=1.0,<2"
+]
+dev = [
+    "python-dotenv>=1.2.4",
+]
 
 [project.urls]
 Repository = "https://github.com/jenniferumoke/tessaract"
