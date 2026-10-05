@@ -21,7 +21,7 @@ def test_unknown_prefix_is_rejected(client):
 def test_plain_input_string_becomes_one_user_message(client):
     request = client._build_request_model(
         model="gpt-test", provider="oai", input="hello",
-        reasoning=None, tools=[], request_options={}, stream=False
+        reasoning=None, max_tokens=None, tools=[], request_options={}, stream=False
     )
 
     assert request.input == [{"role": "user", "content": "hello"}]
@@ -34,7 +34,7 @@ def test_mixed_input_list_is_converted_in_order(client):
             "hi",
             FunctionToolResult(call_id="c1", result="ok")
         ],
-        reasoning=None, tools=[], request_options={}, stream=False
+        reasoning=None, max_tokens=None, tools=[], request_options={}, stream=False
     )
 
     assert request.input == [

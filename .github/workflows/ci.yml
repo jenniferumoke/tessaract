@@ -47,8 +47,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
       
       - name: Install packages with test dependencies
-        run: python -m pip install -e ".[openai]" pytest pytest-cov
+        run: python -m pip install -e ".[openai,anthropic]" pytest pytest-cov
 
       - name: Run tests (live API tests are excluded by default)
-        run: pytest -m pytest --cov=tessaract --cov-report=term-missing
-
+        run: pytest --cov=tessaract --cov-report=term-missing
