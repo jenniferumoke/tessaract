@@ -1,5 +1,5 @@
-from collections.abc import Iterator
-from typing import TYPE_CHECKING, Any, Literal, overload
+from collections.abc import Iterator, Sequence
+from typing import TYPE_CHECKING, Any, Literal, TypeAlias, overload
 
 from .adapters import AnthropicAdapter, OpenAIAdapter
 from .providers import AnthropicProvider, OpenAIProvider
@@ -13,6 +13,9 @@ from .types.streaming.event_types import StreamEventUnion
 if TYPE_CHECKING:
     from .adapters.anthropic.anthropic_adapter import AnthropicAdapter
     from .adapters.openai.openai_adapter import OpenAIAdapter
+
+InputItem: TypeAlias = str | InputType | AssistantMessage | OutputItem
+Input: TypeAlias = str | Sequence[InputItem]
 
 class Tessaract:
     def __init__(self, providers: dict[str, OpenAIProvider | AnthropicProvider]):
@@ -44,7 +47,7 @@ class Tessaract:
         self,
         model: str,
         provider: str,
-        input: str | list[str | InputType],
+        input: Input,
         reasoning: ReasoningOptions | None,
         max_tokens: int | None,
         tools: list[FunctionTool],
@@ -68,7 +71,7 @@ class Tessaract:
                     all_items.append(message.raw(self.adapters[provider]))
 
                 elif isinstance(message, AssistantMessage):  # noqa: SIM114
-                    all_items.append(message.raw)
+                    all_items.append(self.adapters[provider].map_assistant_message(message))
 
                 elif isinstance(message, OutputItem):
                     all_items.append(message.raw)
@@ -89,7 +92,7 @@ class Tessaract:
     @overload
     def send(
             self, model: str, 
-            input: str | list[str | InputType],
+            input: Input,
             stream: Literal[False],
             reasoning: ReasoningOptions | None = None,
             tools: list[FunctionTool] | None = None,
@@ -97,10 +100,11 @@ class Tessaract:
             max_tokens: int | None = None
             ) -> Response: ...
 
+
     @overload
     def send(
             self, model: str, 
-            input: str | list[str | InputType],
+            input: Input,
             stream: Literal[False],
             max_tokens: int,
             reasoning: ReasoningOptions | None = None,
@@ -112,7 +116,7 @@ class Tessaract:
     @overload
     def send(
             self, model: str, 
-            input: str | list[str | InputType],
+            input: Input,
             stream: Literal[True],
             reasoning: ReasoningOptions | None = None,
             tools: list[FunctionTool] | None = None,
@@ -124,7 +128,7 @@ class Tessaract:
     def send(
         self,
         model: str,
-        input: str | list[str | InputType],
+        input: Input,
         stream: bool,
         reasoning: ReasoningOptions | None = None,
         tools: list[FunctionTool] | None = None,
@@ -135,7 +139,7 @@ class Tessaract:
 
     def send(
             self, model: str, 
-            input: str | list[str | InputType],
+            input: Input,
             stream: bool = False,
             reasoning: ReasoningOptions | None = None,
             tools: list[FunctionTool] | None = None,

@@ -29,7 +29,7 @@ class TextOutputItem(OutputItem):
 class AssistantMessage(BaseModel):
     type: Literal["assistant_message"] = "assistant_message"
     role: Literal["assistant"] = "assistant"
-    content: list[TextOutputItem]
+    content: TextOutputItem | list[TextOutputItem]
     raw: Any
 
 class ReasoningOutputItem(OutputItem):

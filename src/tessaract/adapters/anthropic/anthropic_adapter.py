@@ -4,6 +4,7 @@ from typing import cast
 
 from ..adapter import (
     Adapter,
+    AssistantMessageProtocol,
     FunctionToolResultProtocol,
     FunctionToolSchemaProtocol,
     ReasoningParamsProtocol,
@@ -49,6 +50,13 @@ class AnthropicAdapter(Adapter):
         return {
             "role": item.role,
             "content": item.content
+        }
+
+    def map_assistant_message(self, item: AssistantMessageProtocol):
+        parts = item.content if isinstance(item.content, list) else [item.content]
+        return {
+            "role": item.role,
+            "content": [{"type": "text", "text": part.text} for part in parts]
         }
 
     def map_reasoning_params(self, reasoning: ReasoningParamsProtocol | None) -> dict | None:

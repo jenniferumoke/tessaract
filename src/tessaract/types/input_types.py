@@ -1,9 +1,13 @@
-from typing import Any, Literal
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel
 
-from ..adapters.adapter import Adapter
 
+if TYPE_CHECKING:
+    from ..adapters.adapter import Adapter
 
 class InputType(BaseModel):
     def raw(self, adapter: Adapter) -> Any:

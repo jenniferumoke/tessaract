@@ -2,6 +2,7 @@ from typing import Any, Literal
 
 from typing_extensions import Protocol
 
+from ..types.output_types import TextOutputItem
 from ..providers.provider import Provider
 from ..tools.function import InputSchema
 
@@ -9,6 +10,12 @@ from ..tools.function import InputSchema
 class UserMessageProtocol(Protocol):
     role: Literal["user"] = "user"
     content: str | list[dict]
+
+class AssistantMessageProtocol(Protocol):
+    type: Literal["assistant_message"] = "assistant_message"
+    role: Literal["assistant"] = "assistant"
+    content: TextOutputItem | list[TextOutputItem]
+    raw: Any
 
 class SystemPromptProtocol(Protocol):
     role: Literal["system"] = "system"
@@ -41,6 +48,9 @@ class Adapter:
         self._provider = provider
 
     def map_input_message(self, item: UserMessageProtocol | SystemPromptProtocol) -> Any:
+        raise NotImplementedError("not yet implemented...")
+
+    def map_assistant_message(self, item: AssistantMessageProtocol) -> Any:
         raise NotImplementedError("not yet implemented...")
 
     def map_tool_result(self, item: FunctionToolResultProtocol) -> Any:

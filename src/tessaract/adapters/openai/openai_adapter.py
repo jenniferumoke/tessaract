@@ -38,6 +38,7 @@ from ..adapter import (
     ReasoningParamsProtocol,
     SystemPromptProtocol,
     UserMessageProtocol,
+    AssistantMessageProtocol
 )
 
 
@@ -51,6 +52,9 @@ class OpenAIAdapter(Adapter):
             "role": item.role,
             "content": item.content
         }
+
+    def map_assistant_message(self, item: AssistantMessageProtocol):
+        return item.raw
 
     def map_reasoning_params(self, reasoning: ReasoningParamsProtocol | None) -> OpenAIReasoningParams | Omit | None:
         if reasoning is None:
@@ -312,7 +316,6 @@ class OpenAIAdapter(Adapter):
                     type=event.type,
                     raw_event=event
                 )
-
 
     def _normalize_response(self, raw_response) -> OpenAIResponse:
         provider_usage = raw_response.usage
