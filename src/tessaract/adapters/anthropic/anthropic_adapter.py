@@ -59,8 +59,56 @@ class AnthropicAdapter(Adapter):
             "content": [{"type": "text", "text": part.text} for part in parts]
         }
 
+    def map_effort_params_to_output_config(self, reasoning: ReasoningParamsProtocol | None) -> dict | None:
+        output_config = {}
+
+        effort = reasoning.effort
+
+        match effort:
+            case None:
+                pass
+            case "low" | "medium" | "high" | "max":
+                output_config["effort"] = effort
+            case "extra_high":
+                output_config["effort"] = "xhigh"
+
+        return output_config
+
+
     def map_reasoning_params(self, reasoning: ReasoningParamsProtocol | None) -> dict | None:
-        pass
+        if reasoning is None:
+            pass
+
+
+        native_thinking = {}
+
+
+
+        mode = reasoning.mode
+
+        match mode:
+            case None:
+                raise ValueError(
+                    "A thinking configuration type is required for Anthropic."
+                    'Use , "adaptive", "between_tools", "enabled" or "none"'
+                )
+
+
+
+
+        '''
+        @dataclass
+        class ReasoningOptions:
+            effort: Literal[
+                "none", "minimal", "low", "medium", "high", "extra_high", "max" # only low medium high, extra_high converted to xhigh and max should be sent to anthropic, and once sent to anthropic should be converted to output_config. if output_config as provider options in request, let typed param win.
+            ] | None = None
+            summary: Literal["omitted", "concise", "auto", "detailed", "updates"] | None = None #  concise should map to "summarized" in anthropic, "omitted" and "updates" should only be sent to anthropic, in thinking_enabled and thinking_adaptive
+            budget: int | None = None # this should only be sent to anthropic when thinking enabled
+            mode: Literal["standard", "pro", "enabled", "between_tools", "adaptive", "disabled"] | None = None # can seperate between openai and anthropic modes in an enum
+
+
+        '''
+        return None
 
     def _native_property(self, prop: Property) -> dict:
         native: dict[str, object] = {"type": prop.type}

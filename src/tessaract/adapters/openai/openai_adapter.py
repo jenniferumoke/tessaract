@@ -60,13 +60,34 @@ class OpenAIAdapter(Adapter):
         if reasoning is None:
             return Omit()
 
+        if reasoning.budget is not None:
+            raise ValueError("Not a valid reasoning configuration option for OpenAI. Remove it.") 
+
         native_reasoning: OpenAIReasoningParams = {}
 
-        if reasoning.mode is not None:
-            native_reasoning["mode"] = reasoning.mode
+        mode = reasoning.mode
+        match mode:
+            case None:
+                pass
+            case "standard" | "pro":
+                native_reasoning["mode"] = mode
+            case _:
+                raise ValueError(
+                    f"OpenAI does not support mode: {mode!r}."
+                    'Use "standard" or "pro".'
+                )
 
-        if reasoning.summary is not None:
-            native_reasoning["summary"] = reasoning.summary
+        summary = reasoning.summary
+        match summary:
+            case None:
+                pass
+            case "auto" | "concise" | "detailed":
+                native_reasoning["summary"] = summary
+            case _:
+                raise ValueError(
+                    f"OpenAI does not accept reasoning summary {summary!r}."
+                    'Use "auto", "concise" or "detailed".'
+                )
 
         if reasoning.effort is not None:
             native_reasoning["effort"] = (

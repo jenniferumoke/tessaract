@@ -35,9 +35,12 @@ class FunctionToolSchemaProtocol(Protocol):
     provider_options: dict[str, Any]
 
 class ReasoningParamsProtocol(Protocol):
-    effort: Literal["none", "minimal", "low", "medium", "high", "extra_high", "max"] | None = None
-    summary: Literal["concise", "auto", "detailed"] | None = None
-    mode: Literal["standard", "pro"] | None = None
+    effort: Literal[
+        "none", "minimal", "low", "medium", "high", "extra_high", "max"
+    ] | None = None
+    summary: Literal["omitted", "concise", "auto", "detailed", "updates"] | None = None
+    budget: int | None = None
+    mode: Literal["standard", "pro", "enabled", "between_tools", "adaptive", "disabled"] | None = None
 
 class ReasoningProtocol(Protocol):
     type: Literal["reasoning"] = "reasoning"
