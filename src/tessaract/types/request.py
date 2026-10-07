@@ -34,6 +34,7 @@ class ReasoningOptions:
     summary: Literal["omitted", "concise", "auto", "detailed", "updates"] | None = None #  concise should map to "summarized" in anthropic, "omitted" and "updates" should only be sent to anthropic, in thinking_enabled and thinking_adaptive
     budget: int | None = None # this should only be sent to anthropic when thinking enabled
     mode: Literal["standard", "pro", "enabled", "between_tools", "adaptive", "disabled"] | None = None # can seperate between openai and anthropic modes in an enum
+    native_options: dict | None = None
 
 
 @dataclass

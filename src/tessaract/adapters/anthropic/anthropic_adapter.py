@@ -62,6 +62,9 @@ class AnthropicAdapter(Adapter):
     def map_effort_params_to_output_config(self, reasoning: ReasoningParamsProtocol | None) -> dict | None:
         output_config = {}
 
+        if reasoning is None:
+            pass
+
         effort = reasoning.effort
 
         match effort:
@@ -71,18 +74,47 @@ class AnthropicAdapter(Adapter):
                 output_config["effort"] = effort
             case "extra_high":
                 output_config["effort"] = "xhigh"
+            case "none":
+                pass
+            case _:
+                raise ValueError(
+                    f"Anthropic does not support effort: {effort!r}."
+                    'Use "low", "medium", "high", "extra_high" or "max".'
+                )
 
         return output_config
+
+        '''
+        # usage
+        if reasoning.effort is not None:
+            ProviderOptions(
+                "output_config": {
+                    "effort": self.map_effort_params_to_output_config(reasoning)
+                }
+            )
+        if reasoning.effort:
+            # drop "effort" from "output_config", to prevent conflicting states
+        '''
 
 
     def map_reasoning_params(self, reasoning: ReasoningParamsProtocol | None) -> dict | None:
         if reasoning is None:
             pass
 
+        effort = reasoning.effort
 
-        native_thinking = {}
+        match effort:
 
-
+            case "none":
+                native_thinking = {}
+                native_thinking["type"] = "disabled"
+            case "low" | "medium" | "high" | "extra_high" | "max":
+                pass
+            case _:
+                raise ValueError(
+                    f"Anthropic does not support effort: {effort!r}."
+                    'Use "low", "medium", "high", "extra_high" or "max".'
+                )
 
         mode = reasoning.mode
 
@@ -90,10 +122,66 @@ class AnthropicAdapter(Adapter):
             case None:
                 raise ValueError(
                     "A thinking configuration type is required for Anthropic."
-                    'Use , "adaptive", "between_tools", "enabled" or "none"'
+                    'Use , "adaptive", "between_tools", "enabled"'
                 )
+            
+            case "enabled":
+                native_thinking = {}
+                native_thinking["type"] = "enabled"
+                if reasoning.budget is None:
+                    raise ValueError(f"A token budget is required for case {mode!r} ")
+                native_thinking["budget_tokens"] = reasoning.budget
 
+                if reasoning.native_options is None:
+                    pass
+                    if "block_binding" in reasoning.native_options.keys():
+                        prefix_mismatch_behaviour = reasoning.native_options["block_binding"]
+                        native_thinking["block_binding"] = prefix_mismatch_behaviour
 
+                summary = reasoning.summary
+                match summary:
+                    case "omitted" | "updates":
+                        native_thinking["display"] = summary
+                    case "concise":
+                        native_thinking["display"] = "summarized"
+                    case _:
+                        raise ValueError(
+                            f"unsupported summary mode: {summary!r} for Anthropic"
+                            'Use "concise", "omitted" or "updates"'
+                        )
+                return native_thinking
+
+            case "adaptive":
+                native_thinking = {}
+                native_thinking["type"] = "adaptive"
+                return native_thinking
+
+            case "between_tools":
+                native_thinking = {}
+                native_thinking["type"] = "between_tools"
+                return native_thinking
+
+            case "adaptive":
+                native_thinking = {}
+                native_thinking["type"] = "adaptive"
+                summary = reasoning.summary
+                match summary:
+                    case "omitted" | "updates":
+                        native_thinking["display"] = summary
+                    case "concise":
+                        native_thinking["display"] = "summarized"
+                    case _:
+                        raise ValueError(
+                            f"unsupported summary mode: {summary!r} for Anthropic"
+                            'Use "concise", "omitted" or "updates"'
+                        )
+                if reasoning.native_options is None:
+                    pass
+                    if "block_binding" in reasoning.native_options.keys():
+                        prefix_mismatch_behaviour = reasoning.native_options["block_binding"]
+                        native_thinking["block_binding"] = prefix_mismatch_behaviour
+
+                return native_thinking
 
 
         '''
@@ -104,7 +192,7 @@ class AnthropicAdapter(Adapter):
             ] | None = None
             summary: Literal["omitted", "concise", "auto", "detailed", "updates"] | None = None #  concise should map to "summarized" in anthropic, "omitted" and "updates" should only be sent to anthropic, in thinking_enabled and thinking_adaptive
             budget: int | None = None # this should only be sent to anthropic when thinking enabled
-            mode: Literal["standard", "pro", "enabled", "between_tools", "adaptive", "disabled"] | None = None # can seperate between openai and anthropic modes in an enum
+            mode: Literal["standard", "pro", "enabled", "between_tools", "adaptive"] | None = None # can seperate between openai and anthropic modes in an enum
 
 
         '''

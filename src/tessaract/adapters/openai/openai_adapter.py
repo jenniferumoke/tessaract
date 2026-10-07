@@ -60,6 +60,9 @@ class OpenAIAdapter(Adapter):
         if reasoning is None:
             return Omit()
 
+        if reasoning.native_options is not None:
+            pass
+
         if reasoning.budget is not None:
             raise ValueError("Not a valid reasoning configuration option for OpenAI. Remove it.") 
 

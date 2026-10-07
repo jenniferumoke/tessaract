@@ -41,6 +41,7 @@ class ReasoningParamsProtocol(Protocol):
     summary: Literal["omitted", "concise", "auto", "detailed", "updates"] | None = None
     budget: int | None = None
     mode: Literal["standard", "pro", "enabled", "between_tools", "adaptive", "disabled"] | None = None
+    native_options: dict | None = None
 
 class ReasoningProtocol(Protocol):
     type: Literal["reasoning"] = "reasoning"
