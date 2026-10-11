@@ -7,12 +7,17 @@ edit_uri: edit/main/docs/
 
 theme:
   name: material
+  logo: assets/images/tessaract-symbol.png
+  favicon: assets/images/tessaract-symbol.png
   features:
     - content.code.copy
     - navigation.sections
     - navigation.top
     - search.suggest
     - search.highlight
+
+extra_css:
+  - assets/stylesheets/branding.css
 
 nav:
   - Home: index.md
