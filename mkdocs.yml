@@ -7,8 +7,8 @@ edit_uri: edit/main/docs/
 
 theme:
   name: material
-  logo: assets/images/tessaract-symbol.png
-  favicon: assets/images/tessaract-symbol.png
+  logo: assets/images/tessaract-symbol.webp
+  favicon: assets/images/favicon.png
   features:
     - content.code.copy
     - navigation.sections

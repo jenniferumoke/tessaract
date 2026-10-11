@@ -1,6 +1,6 @@
 # Tessaract
 
-<img class="tessaract-wordmark" src="assets/images/tessaract-logo.png" alt="Tessaract" width="2172" height="724">
+<img class="tessaract-wordmark" src="assets/images/tessaract-logo.webp" srcset="assets/images/tessaract-logo.webp 600w, assets/images/tessaract-logo-1200.webp 1200w" sizes="(max-width: 632px) calc(100vw - 32px), 600px" alt="Tessaract" width="600" height="200" decoding="async" fetchpriority="high">
 
 Tessaract is a Python SDK for building AI agents across providers. It provides common types for requests, responses, tools, reasoning, and streaming, while provider adapters handle each vendor's API.
 
