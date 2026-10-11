@@ -75,7 +75,7 @@ response = client.send(model="oai/gpt-6-luna", input="Say hello in five words.")
 print(response.output_text)
 ```
 
-`OpenAIProvider` reads `OPENAI_API_KEY` from the environment. The `oai` prefix is your choice; Tessaract sends the model name after `/` to OpenAI. For multi-turn conversations, try the [simple chat loop](https://jenniferumoke.github.io/tessaract/getting-started/#a-simple-chat-loop).
+`OpenAIProvider` reads `OPENAI_API_KEY` from the environment. The `oai` prefix is your choice; Tessaract sends the model name after `/` to OpenAI. For multi-turn conversations, try the [simple chat loop](https://tessaractai.com/getting-started/#a-simple-chat-loop).
 
 ---
 
@@ -171,7 +171,7 @@ history: list = []
 print(run_agent(history, "What's the weather in Paris, and what time is it?"))
 ```
 
-The step-by-step walkthrough is in the [building an agent guide](https://jenniferumoke.github.io/tessaract/building-an-agent/), with runnable versions in [`examples/`](https://github.com/jenniferumoke/tessaract/tree/main/examples).
+The step-by-step walkthrough is in the [building an agent guide](https://tessaractai.com/building-an-agent/), with runnable versions in [`examples/`](https://github.com/jenniferumoke/tessaract/tree/main/examples).
 
 ---
 
@@ -201,23 +201,23 @@ for event in client.send(
 history.extend(completed.output)
 ```
 
-See the [streaming guide](https://jenniferumoke.github.io/tessaract/streaming/) for the full event list.
+See the [streaming guide](https://tessaractai.com/streaming/) for the full event list.
 
 ---
 
 ## Documentation
 
-The documentation site is [jenniferumoke.github.io/tessaract](https://jenniferumoke.github.io/tessaract/).
+The documentation site is [tessaractai.com](https://tessaractai.com/).
 
 | Guide | What it covers |
 | --- | --- |
-| [Getting started](https://jenniferumoke.github.io/tessaract/getting-started/) | Installing, configuring providers, sending your first request, and building multi-turn history |
-| [Building an agent](https://jenniferumoke.github.io/tessaract/building-an-agent/) | A step-by-step tutorial for an agent with reasoning and tool calling, both synchronous and streaming |
-| [Tool calling](https://jenniferumoke.github.io/tessaract/tool-calling/) | `FunctionTool`, `InputSchema`, `Property`, strict mode, tool results and `provider_options` |
-| [Reasoning](https://jenniferumoke.github.io/tessaract/reasoning/) | `ReasoningOptions`, effort levels, summaries, and reading and preserving reasoning items |
-| [Streaming](https://jenniferumoke.github.io/tessaract/streaming/) | Every canonical stream event, and how to build a streaming agent loop |
-| [API reference](https://jenniferumoke.github.io/tessaract/api-reference/) | Every public class, field and method |
-| [Architecture](https://jenniferumoke.github.io/tessaract/architecture/) | Canonical types, adapters and providers, and how to add a new provider |
+| [Getting started](https://tessaractai.com/getting-started/) | Installing, configuring providers, sending your first request, and building multi-turn history |
+| [Building an agent](https://tessaractai.com/building-an-agent/) | A step-by-step tutorial for an agent with reasoning and tool calling, both synchronous and streaming |
+| [Tool calling](https://tessaractai.com/tool-calling/) | `FunctionTool`, `InputSchema`, `Property`, strict mode, tool results and `provider_options` |
+| [Reasoning](https://tessaractai.com/reasoning/) | `ReasoningOptions`, effort levels, summaries, and reading and preserving reasoning items |
+| [Streaming](https://tessaractai.com/streaming/) | Every canonical stream event, and how to build a streaming agent loop |
+| [API reference](https://tessaractai.com/api-reference/) | Every public class, field and method |
+| [Architecture](https://tessaractai.com/architecture/) | Canonical types, adapters and providers, and how to add a new provider |
 
 ---
 
