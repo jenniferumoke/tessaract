@@ -1,11 +1,11 @@
 [project]
 name = "tessaract"
-version = "0.1.2"
+version = "0.2.0"
 description = "Provider-agnostic SDK for building AI agents natively"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "pydantic>=2.10,<3"   
+    "pydantic>=2.10,<3",
 ]
 license = "MIT"
 license-files = ["LICENSE"]
@@ -23,9 +23,12 @@ anthropic = [
 dev = [
     "python-dotenv>=1.2.4",
 ]
+google = [
+    "google-genai>=2.30.1",
+]
 
 [project.urls]
-Repository = "https://github.com/jenniferumoke/tessaract"
+Repository = "https://tessaractai.com"
 Issues = "https://github.com/jenniferumoke/tessaract/issues"
 Documentation = "https://jenniferumoke.github.io/tessaract/"
 
