@@ -9,6 +9,7 @@ from tessaract import (
     FunctionTool, InputSchema, Property,
     UserMessage, SystemPrompt, FunctionToolResult,
     ReasoningOptions,
+    DEFAULT_ANTHROPIC_MAX_TOKENS,
 )
 ```
 
@@ -103,7 +104,11 @@ This creates an `openai.OpenAI` client from the fields that are set, plus `provi
 AnthropicProvider(api_key="sk-ant-...", base_url=..., timeout=..., provider_args={...})
 ```
 
-This creates an `anthropic.Anthropic` client from the fields that are set, plus `provider_args`. If `api_key` is `None`, it reads `ANTHROPIC_API_KEY`.
+This creates an `anthropic.Anthropic` client from the fields that are set, plus `provider_args`. The `.client` property returns that SDK client. If `api_key` is `None`, it reads `ANTHROPIC_API_KEY`.
+
+### `DEFAULT_ANTHROPIC_MAX_TOKENS`
+
+`tessaract.DEFAULT_ANTHROPIC_MAX_TOKENS` (`16_000`). The `max_tokens` the Anthropic adapter sends when `send()` gets `max_tokens=None`. A thinking `budget` must be less than the `max_tokens` that's sent.
 
 **Raises:** `ImportError` if the `anthropic` package isn't installed, and `ValueError` if no API key is found.
 
@@ -235,8 +240,7 @@ Use `SystemPrompt(content="...")` in an input list to provide system instruction
 | --- | --- | --- |
 | `id` | `str` | Provider response ID |
 | `model` | `str` | Model name |
-| `status` | `ResponseStatus \| str` | e.g. `"completed"` or `"incomplete"` |
-| `provider` | `Provider \| None` | The provider that produced the response |
+| `provider` | `"openai" \| "anthropic" \| None` | Which provider produced the response |
 | `output` | `list[OutputType]` | Typed output items, in order |
 | `usage` | `Usage \| None` | Normalized token counts when the provider reports usage |
 | `error` | `ResponseError \| None` | Set if the provider reports an error |
@@ -246,9 +250,11 @@ Use `SystemPrompt(content="...")` in an input list to provide system instruction
 
 `Usage` includes `input_tokens`, `output_tokens`, `total_tokens`, `cached_input_tokens`, `cache_write_input_tokens`, and `reasoning_tokens`. The detail fields are `None` when the provider does not report them. `OpenAIResponse.provider_usage` holds the native OpenAI SDK usage object, or `None` when usage is unavailable. Completed streaming responses expose both fields through `ResponseCompletedEvent.response`.
 
-`OpenAIResponse.input_tokens` and `OpenAIResponse.cached_input_tokens` provide direct access to the corresponding normalized usage counts. Each returns `None` when usage is unavailable; `cached_input_tokens` is also `None` when the provider does not report that detail.
+`OpenAIResponse` adds `status` (a `ResponseStatus`, e.g. `"completed"` or `"incomplete"`). `OpenAIResponse.input_tokens` and `OpenAIResponse.cached_input_tokens` provide direct access to the corresponding normalized usage counts. Each returns `None` when usage is unavailable; `cached_input_tokens` is also `None` when the provider does not report that detail.
 
-`AnthropicResponse` has `stop_reason` (a `StopReason`, or the raw string for a stop reason Tessaract doesn't know yet) instead of `status`, and `provider_usage` holds the native Anthropic `Usage`. Its normalized `input_tokens` includes cache reads and cache writes, so it means the same as OpenAI's; `provider_usage.input_tokens` is Anthropic's uncached count.
+`AnthropicResponse` has `stop_reason` (a `StopReason`, or the raw string for a stop reason Tessaract doesn't know yet) instead of `status`, and `provider_usage` holds the native Anthropic `Usage`. Its normalized `input_tokens` includes cache reads and cache writes, so it means the same as OpenAI's; `provider_usage.input_tokens` is Anthropic's uncached count. `cached_input_tokens` is Anthropic's `cache_read_input_tokens`, `cache_write_input_tokens` is `cache_creation_input_tokens`, and `reasoning_tokens` is the thinking token count when Anthropic reports it. `AnthropicResponse` has the same `input_tokens` and `cached_input_tokens` properties as `OpenAIResponse`.
+
+`send()` is typed to return `Response`, so use `isinstance(response, AnthropicResponse)` (or `OpenAIResponse`) before reading `status` or `stop_reason`. Both classes are in `tessaract.types.response`.
 
 ### `StopReason`
 
@@ -282,6 +288,8 @@ A `str` enum with the values `queued`, `in_progress`, `completed`, `incomplete`,
 The OpenAI adapter returns an assistant message as a `ProviderOutputItem` (`provider_type="message"`) when it contains anything other than plain `output_text`, such as refusals or annotations and citations. It still replays correctly, and you can inspect it through `.raw`.
 
 The Anthropic adapter returns neighbouring text blocks as one `AssistantMessage` whose `raw` is the list of native text blocks. Thinking blocks become `ReasoningOutputItem`s with `id=None`, and `redacted_thinking`, server tool blocks and any other block types become `ProviderOutputItem`s. Unknown OpenAI output item types are also returned as `ProviderOutputItem`s.
+
+`TextOutputItem.annotations` holds citations as `Annotation` objects (`provider`, `provider_type`, `source`, `title`, `cited_text`, `provider_metadata`). On Anthropic they come from a text block's `citations`, and `source` is the URL, source or file ID.
 
 `OutputType` is the union of all of these.
 

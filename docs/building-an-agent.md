@@ -1,6 +1,6 @@
 # Building an agent with reasoning and tool calling
 
-This tutorial builds a small agent on OpenAI's reasoning models with Tessaract. By the end, the agent will:
+This tutorial builds a small agent with Tessaract. It uses OpenAI by default, and the same code runs on Anthropic's Claude models by changing the model prefix (see [Run it on Anthropic](#run-it-on-anthropic)). By the end, the agent will:
 
 - think before answering, and show you a summary of its reasoning
 - decide when to call your Python functions, and with which arguments
@@ -12,6 +12,13 @@ Runnable code for this guide:
 
 - [`examples/agent.py`](https://github.com/jenniferumoke/tessaract/blob/main/examples/agent.py) is the synchronous agent
 - [`examples/streaming_agent.py`](https://github.com/jenniferumoke/tessaract/blob/main/examples/streaming_agent.py) is the streaming agent
+
+Both read the model from `TESSARACT_MODEL`, so you can run them on Anthropic with:
+
+```bash
+export ANTHROPIC_API_KEY="your-anthropic-key"
+TESSARACT_MODEL=ant/claude-opus-5-5 uv run --extra anthropic python examples/agent.py
+```
 
 ---
 
@@ -66,7 +73,7 @@ MODEL = "oai/gpt-5.6-luna"   # any OpenAI reasoning model, prefixed with your pr
 
 Tools are plain Python functions. Two rules make them work well with the agent loop:
 
-1. **Return a string or JSON-serializable data.** OpenAI expects a function call's output to be a string. Tessaract sends strings as-is and JSON-encodes anything else.
+1. **Return a string or JSON-serializable data.** OpenAI expects a function call's output to be a string, and Anthropic expects a string or content blocks. Tessaract sends strings as-is and JSON-encodes anything else.
 2. **Don't raise.** Catch errors and return an error message instead, so the model can recover. An exception would stop your loop.
 
 ```python
@@ -117,7 +124,7 @@ tools = [
 Notes:
 
 - **No arguments?** Leave out `input_schema` and set `strict=False`, as `get_time` does.
-- **`strict=True`** (the OpenAI adapter's default) makes OpenAI guarantee that the arguments match your schema exactly. With strict mode on, list **every** property in `required` and keep `additionalProperties=False`. The adapter already defaults `additionalProperties` to `False`.
+- **`strict=True`** (the default on both adapters) makes the provider guarantee that the arguments match your schema exactly. OpenAI's strict mode also requires **every** property to be listed in `required`, so do that for portable tools. Both adapters already default `additionalProperties` to `False`.
 - `Property` supports `"string"`, `"number"`, `"integer"`, `"boolean"`, `"array"` (with `items`), `"object"` (with nested `properties`), `"null"`, nullable types such as `["string", "null"]`, and `enum`.
 
 More options are in [Tool calling](tool-calling.md).
@@ -131,7 +138,7 @@ reasoning = ReasoningOptions(effort="medium", summary="auto")
 - `effort` sets how long the model thinks: `"none"`, `"minimal"`, `"low"`, `"medium"`, `"high"`, `"extra_high"` or `"max"`. Higher effort gives better answers on hard problems, at the cost of more latency and tokens. `"low"` or `"medium"` is enough for tool routing.
 - `summary` asks the model for a human-readable summary of its reasoning (`"auto"`, `"concise"` or `"detailed"`). Without it, reasoning items come back with an empty summary.
 
-Which effort levels are supported depends on the model. See [Reasoning](reasoning.md).
+On Anthropic, these settings become adaptive thinking with `display="summarized"` and `output_config.effort="medium"`. Which effort levels are supported depends on the model. See [Reasoning](reasoning.md).
 
 ## Step 5: Write the agent loop
 
@@ -187,7 +194,7 @@ def run_turn(history: list, user_text: str) -> str:
 
 A few things in this loop matter:
 
-- **(a) Extend the history with all of `response.output`.** The `function_call` items must be in the history before their `FunctionToolResult`s, or OpenAI rejects the request. Keeping the `reasoning` items lets the model build on its earlier thinking across tool calls.
+- **(a) Extend the history with all of `response.output`.** The `function_call` items must be in the history before their `FunctionToolResult`s, or the provider rejects the request. Keeping the `reasoning` items lets the model build on its earlier thinking across tool calls, and Anthropic requires them when thinking is on.
 - **(c) Stop when there are no calls.** A turn can contain reasoning, text and function calls together. If there are no function calls, the model is done.
 - **(d) Answer every call.** The model can ask for several tools at once, which is parallel tool calling. Each `call_id` needs exactly one `FunctionToolResult`. `execute()` returns one even when the tool fails, marked with `is_error=True`.
 - **`MAX_STEPS`** limits the loop, so a model that keeps calling tools can't run forever.
@@ -286,6 +293,43 @@ All the event types are listed in [Streaming](streaming.md).
 
 ---
 
+## Run it on Anthropic
+
+Nothing in the loop is OpenAI-specific. Register an `AnthropicProvider` and change the model:
+
+```python
+from tessaract import AnthropicProvider
+
+client = Tessaract(providers={"ant": AnthropicProvider()})   # reads ANTHROPIC_API_KEY
+MODEL = "ant/claude-opus-5-5"
+```
+
+Then pass `max_tokens` to `client.send()`. Anthropic requires it, and Tessaract sends 16,000 (`DEFAULT_ANTHROPIC_MAX_TOKENS`) when you leave it out, but output limits differ between models, so set it explicitly:
+
+```python
+response = client.send(
+    model=MODEL,
+    input=history,
+    tools=tools,
+    reasoning=reasoning,
+    instructions=INSTRUCTIONS,
+    max_tokens=16_000,
+)
+```
+
+What the Anthropic adapter does for you:
+
+- **Turns.** Each response's thinking, text and `tool_use` blocks are grouped into one assistant turn, and the `FunctionToolResult`s that follow are grouped into one user turn, as the Messages API requires.
+- **Instructions.** `instructions=` and any `SystemPrompt` items are sent as the top-level `system` parameter.
+- **Errors.** `is_error=True` is sent as Anthropic's native `is_error` flag on the `tool_result`.
+- **Thinking.** Thinking blocks come back as `ReasoningOutputItem`s with their signature in `.raw`, and are replayed unchanged. Keep them in the history: Anthropic rejects a tool-use turn whose thinking is missing or modified.
+
+To stop the loop on the right condition, you can also check `response.stop_reason == "tool_use"` on Anthropic responses, but looking for `function_call` items works on both providers.
+
+You can register both providers on one client and pick per request. Keep each conversation's history on one provider, because output items replay in their native form.
+
+---
+
 ## Production tips
 
 | Concern | Recommendation |
@@ -293,10 +337,12 @@ All the event types are listed in [Streaming](streaming.md).
 | **Tool errors** | Catch exceptions in `execute()` and return `FunctionToolResult(call_id=..., result=str(exc), is_error=True)`. Models usually recover by retrying or asking the user. |
 | **Runaway loops** | Keep a `MAX_STEPS` limit. |
 | **Growing context** | `history` grows with every turn. Trim or summarize old turns in long sessions, but never separate a `function_call` from its `FunctionToolResult`. |
-| **Bad arguments** | Use `strict=True` with a complete `required` list so OpenAI enforces the schema. Validate arguments again in your functions if they have side effects. |
+| **Bad arguments** | Use `strict=True` with a complete `required` list so the provider enforces the schema. Validate arguments again in your functions if they have side effects. |
 | **Dangerous tools** | Ask the user to confirm before running tools that write, delete, spend money or send messages. |
-| **Stateless mode** | If you run with `request_options={"store": False}`, OpenAI can't look up earlier reasoning items by ID. Add `"include": ["reasoning.encrypted_content"]` so the reasoning items carry their encrypted content back in the history. |
-| **Debugging** | `response.raw_response` (and `event.raw_event` when streaming) holds the untouched OpenAI SDK object. |
+| **Stateless mode** | If you run OpenAI with `request_options={"store": False}`, it can't look up earlier reasoning items by ID. Add `"include": ["reasoning.encrypted_content"]` so the reasoning items carry their encrypted content back in the history. Anthropic is stateless already, and thinking blocks carry their signature. |
+| **Truncated output** | On Anthropic, `response.stop_reason == "max_tokens"` means the answer was cut off. Raise `max_tokens`. |
+| **Prompt caching** | On Anthropic, add `cache_control` breakpoints to the system prompt or tools. See [Prompt caching on Anthropic](getting-started.md#prompt-caching-on-anthropic). |
+| **Debugging** | `response.raw_response` (and `event.raw_event` when streaming) holds the untouched OpenAI or Anthropic SDK object. |
 | **Unmodeled output** | Items Tessaract doesn't model yet, such as messages with citations, come back as `ProviderOutputItem` with the native object in `.raw`. They still replay correctly in the history. |
 
 ## Where to go next

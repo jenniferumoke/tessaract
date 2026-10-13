@@ -88,14 +88,14 @@ InputSchema(
 
 ## Strict mode
 
-With `strict=True`, which is the OpenAI default here, OpenAI uses structured outputs to guarantee that the arguments match the schema. OpenAI requires that:
+With `strict=True`, which both adapters use when `strict` is `None`, OpenAI uses structured outputs to guarantee that the arguments match the schema. OpenAI requires that:
 
 - every key in `properties` is listed in `required`
 - `additionalProperties` is `False`
 
 For an optional argument in strict mode, keep it in `required` and make it nullable with `type=["string", "null"]`. Nested objects follow the same rules.
 
-Anthropic's strict tool use also needs `additionalProperties: false` on every object, which both adapters send by default. Anthropic doesn't require every property to be in `required`.
+On Anthropic, `strict=True` turns on strict tool use, which also guarantees schema-valid arguments. It needs `additionalProperties: false` on every object, which both adapters send by default. Anthropic doesn't require every property to be in `required`, but listing them all keeps a tool portable across providers.
 
 For a tool with **no arguments**, leave out `input_schema` and set `strict=False`. Anthropic requires a schema on every tool, so the Anthropic adapter sends an empty object schema:
 
@@ -172,7 +172,20 @@ except Exception as exc:
 
 ## Native tool fields (`provider_options`)
 
-Everything in `provider_options` is merged into the native tool definition, except the canonical keys `type`, `name`, `description` and `strict`, plus `parameters` (OpenAI) or `input_schema` (Anthropic). The canonical fields always control those. A common Anthropic use is a prompt-caching breakpoint, `provider_options={"cache_control": {"type": "ephemeral"}}`:
+Everything in `provider_options` is merged into the native tool definition, except the canonical keys `type`, `name`, `description` and `strict`, plus `parameters` (OpenAI) or `input_schema` (Anthropic). The canonical fields always control those.
+
+A common Anthropic use is a prompt-caching breakpoint. Put it on the last tool to cache all the tool definitions:
+
+```python
+FunctionTool(
+    name="get_weather",
+    description="Get the current temperature for a city.",
+    input_schema=...,
+    provider_options={"cache_control": {"type": "ephemeral"}},
+)
+```
+
+Any other native field works the same way, for example an `output_schema`:
 
 ```python
 FunctionTool(
