@@ -51,3 +51,18 @@ jobs:
 
       - name: Run tests (live API tests are excluded by default)
         run: pytest --cov=tessaract --cov-report=term-missing
+
+  typecheck:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Install packages with type checker
+        run: python -m pip install -e ".[openai,anthropic]" pyright==1.1.414
+
+      - name: Type check the library, examples and public API usage (what Pylance reports in editors)
+        run: pyright src examples tests/typing

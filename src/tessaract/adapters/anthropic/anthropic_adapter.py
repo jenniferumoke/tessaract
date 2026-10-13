@@ -453,6 +453,9 @@ class AnthropicAdapter(Adapter):
                     raw=content_block
                 )
 
+    def _text_parts(self, message: AssistantMessage) -> list[TextOutputItem]:
+        return message.content if isinstance(message.content, list) else [message.content]
+
     def _normalize_output(self, output_items) -> list[OutputType]:
         output: list[OutputType] = []
 
@@ -464,7 +467,7 @@ class AnthropicAdapter(Adapter):
                 previous = output[-1]
                 output[-1] = AssistantMessage(
                     raw=[*previous.raw, *item.raw],
-                    content=[*previous.content, *item.content],
+                    content=[*self._text_parts(previous), *self._text_parts(item)],
                 )
             else:
                 output.append(item)
@@ -572,7 +575,7 @@ class AnthropicAdapter(Adapter):
 
             case _:
                 yield CustomProviderEvent(
-                    type=event.type,
+                    provider_type=event.type,
                     raw_event=event
                 )
 

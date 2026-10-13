@@ -303,6 +303,6 @@ The Anthropic adapter returns neighbouring text blocks as one `AssistantMessage`
 | `FunctionCallArgumentDeltaEvent` | `tool_arguments.delta` |
 | `ToolCallStartedEvent` | `tool_call.started` |
 | `OutputItemCompletedEvent` | `output_item.done` |
-| `CustomProviderEvent` | the native event type |
+| `CustomProviderEvent` | `custom_provider_event` (the native event name is in `provider_type`) |
 
 Field details are in [Streaming](streaming.md#event-reference).

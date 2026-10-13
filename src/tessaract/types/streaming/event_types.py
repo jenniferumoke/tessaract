@@ -128,8 +128,13 @@ class OutputItemCompletedEvent(BaseModel):
     )
 
 class CustomProviderEvent(BaseModel):
-    _type: Literal["custom_provider_event"] = "custom_provider_event"
-    type: str
+    '''A native stream event without a canonical equivalent.
+
+        type is always "custom_provider_event", so `event.type == ...` checks narrow the
+        StreamEventUnion for type checkers. The native event name is in provider_type.
+    '''
+    type: Literal["custom_provider_event"] = "custom_provider_event"
+    provider_type: str
     raw_event: Any
 
 StreamEventUnion: TypeAlias = (
@@ -142,6 +147,7 @@ StreamEventUnion: TypeAlias = (
     ReasoningSummaryDeltaEvent |
     ResponseCompletedEvent | 
     ResponseStartedEvent | 
-    TextDeltaEvent
+    TextDeltaEvent |
+    OutputItemCompletedEvent
     )
 

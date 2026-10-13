@@ -74,7 +74,7 @@ class Adapter:
     def map_function_schema(self, tools: list[FunctionToolSchemaProtocol]) -> list:
         raise NotImplementedError("not yet implemented...")
 
-    def map_reasoning_params(self, item: ReasoningParamsProtocol) -> Any:
+    def map_reasoning_params(self, reasoning: ReasoningParamsProtocol | None) -> Any:
         raise NotImplementedError("not yet implemented...")
     
     def map_reasoning(self, item: ReasoningProtocol) -> Any:

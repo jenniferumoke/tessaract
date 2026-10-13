@@ -161,7 +161,10 @@ def test_stream_events_are_normalized(anthropic_client, anthropic_api):
     anthropic_api.sse_events = _stream_events()
 
     events = list(anthropic_client.send(model="ant/claude-test", input="Weather?", stream=True))
-    types = [event.type for event in events]
+    types = [
+        event.provider_type if event.type == "custom_provider_event" else event.type
+        for event in events
+    ]
 
     assert types == [
         "response_started",

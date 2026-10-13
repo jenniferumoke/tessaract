@@ -344,7 +344,7 @@ class OpenAIAdapter(Adapter):
 
             case _:
                 yield CustomProviderEvent(
-                    type=event.type,
+                    provider_type=event.type,
                     raw_event=event
                 )
 
