@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 if TYPE_CHECKING:
@@ -32,6 +32,7 @@ class FunctionToolResult(InputType):
     call_id: str
     result: Any
     is_error: bool = False
+    provider_options: dict[str, Any] = Field(default_factory=dict)
 
     def raw(self, adapter: Adapter):
         return adapter.map_tool_result(self)

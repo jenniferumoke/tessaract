@@ -51,3 +51,41 @@ def test_send_with_stream_true_generates_stream(client, monkeypatch):
     adapter = client.adapters["oai"]
     monkeypatch.setattr(adapter, "generate_stream", lambda request: ["streamed", request.stream])
     assert client.send(model="oai/gpt-latest", input="hi", stream=True) == ["streamed", True]
+
+def test_send_with_stream_false_generates_sync(client, monkeypatch):
+    adapter = client.adapters["oai"]
+    monkeypatch.setattr(adapter, "generate_sync", lambda request: ("sync", request.stream))
+    assert client.send(model="oai/gpt-latest", input="hi") == ("sync", False)
+
+def test_instructions_are_put_on_the_request(client):
+    request = client._build_request_model(
+        model="gpt-test", provider="oai", input="hi",
+        reasoning=None, max_tokens=None, tools=[], request_options={}, stream=False,
+        instructions="Be brief."
+    )
+
+    assert request.instructions == "Be brief."
+
+def test_output_items_are_replayed_through_the_adapter(client, monkeypatch):
+    from tessaract.types.output_types import ReasoningOutputItem
+
+    adapter = client.adapters["oai"]
+    monkeypatch.setattr(adapter, "map_output_item", lambda item: ("mapped", item.raw))
+
+    request = client._build_request_model(
+        model="gpt-test", provider="oai", input=[ReasoningOutputItem(raw="native")],
+        reasoning=None, max_tokens=None, tools=[], request_options={}, stream=False
+    )
+
+    assert request.input == [("mapped", "native")]
+
+def test_openai_output_items_replay_their_raw_form(openai_adapter):
+    from tessaract.types.output_types import FunctionCallOutputItem
+
+    raw = {"type": "function_call", "call_id": "c1", "name": "f", "arguments": "{}"}
+    assert openai_adapter.map_output_item(FunctionCallOutputItem(raw=raw, call_id="c1", name="f")) is raw
+
+def test_anthropic_stream_true_streams(anthropic_client, monkeypatch):
+    adapter = anthropic_client.adapters["ant"]
+    monkeypatch.setattr(adapter, "generate_stream", lambda request: ["streamed", request.stream])
+    assert anthropic_client.send(model="ant/claude-test", input="hi", stream=True) == ["streamed", True]

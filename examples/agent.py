@@ -1,8 +1,14 @@
-"""A reasoning + tool-calling agent built on Tessaract and the OpenAI API.
+"""A reasoning + tool-calling agent built on Tessaract.
 
-Run:
+The same agent code runs on OpenAI or Anthropic; only the model prefix changes.
+
+Run with OpenAI (the default):
     export OPENAI_API_KEY=sk-...
-    uv run python examples/agent.py
+    uv run --extra openai python examples/agent.py
+
+Run with Anthropic:
+    export ANTHROPIC_API_KEY=sk-ant-...
+    TESSARACT_MODEL=ant/claude-opus-5-5 uv run --extra anthropic python examples/agent.py
 """
 
 import json
@@ -13,14 +19,15 @@ from tessaract import (
     FunctionTool,
     FunctionToolResult,
     InputSchema,
-    OpenAIProvider,
     Property,
     ReasoningOptions,
     Tessaract,
     UserMessage,
 )
 
+# "oai/<model>" for OpenAI, "ant/<model>" for Anthropic
 MODEL = os.environ.get("TESSARACT_MODEL", "oai/gpt-5.6-luna")
+MAX_TOKENS = 16_000
 INSTRUCTIONS = "You are a helpful assistant. Use tools when they help; be concise."
 MAX_STEPS = 10
 
@@ -66,9 +73,18 @@ REASONING = ReasoningOptions(effort="medium", summary="auto")
 
 # --- Agent -----------------------------------------------------------------
 
-client = Tessaract(
-    providers={"oai": OpenAIProvider()}  # reads OPENAI_API_KEY
-)
+def make_client() -> Tessaract:
+    """Registers only the provider MODEL uses, so only that SDK and API key are needed."""
+    prefix = MODEL.partition("/")[0]
+    if prefix == "ant":
+        from tessaract import AnthropicProvider
+        return Tessaract(providers={"ant": AnthropicProvider()})  # reads ANTHROPIC_API_KEY
+
+    from tessaract import OpenAIProvider
+    return Tessaract(providers={"oai": OpenAIProvider()})  # reads OPENAI_API_KEY
+
+
+client = make_client()
 
 
 def execute(call) -> FunctionToolResult:
@@ -92,7 +108,8 @@ def run_turn(history: list, user_text: str) -> str:
             input=history,
             tools=TOOLS,
             reasoning=REASONING,
-            request_options={"instructions": INSTRUCTIONS},
+            instructions=INSTRUCTIONS,
+            max_tokens=MAX_TOKENS,
         )
 
         history.extend(response.output)

@@ -1,6 +1,6 @@
 # Tool calling
 
-Tessaract has one canonical way to define **function tools**. Each provider adapter converts them to the native format; for OpenAI, that's a Responses API `function` tool.
+Tessaract has one canonical way to define **function tools**. Each provider adapter converts them to the native format: a Responses API `function` tool for OpenAI, and a Messages API `custom` tool with an `input_schema` for Anthropic.
 
 ```python
 from tessaract import FunctionTool, InputSchema, Property
@@ -31,7 +31,7 @@ get_weather = FunctionTool(
 | `name` | `str` | required | The name the model uses to call the tool. Use it as the key in your dispatch table. |
 | `description` | `str` | required | Tells the model what the tool does and when to use it. |
 | `input_schema` | `InputSchema \| None` | `None` | The arguments. Leave it out for tools that take no arguments. |
-| `strict` | `bool \| None` | `None` | Enforce the schema exactly. The OpenAI adapter treats `None` as **`True`**. |
+| `strict` | `bool \| None` | `None` | Enforce the schema exactly. Both adapters treat `None` as **`True`**. |
 | `provider_options` | `dict` | `{}` | Extra native fields merged into the provider's tool definition. |
 
 ### `InputSchema`
@@ -95,7 +95,9 @@ With `strict=True`, which is the OpenAI default here, OpenAI uses structured out
 
 For an optional argument in strict mode, keep it in `required` and make it nullable with `type=["string", "null"]`. Nested objects follow the same rules.
 
-For a tool with **no arguments**, leave out `input_schema` and set `strict=False`:
+Anthropic's strict tool use also needs `additionalProperties: false` on every object, which both adapters send by default. Anthropic doesn't require every property to be in `required`.
+
+For a tool with **no arguments**, leave out `input_schema` and set `strict=False`. Anthropic requires a schema on every tool, so the Anthropic adapter sends an empty object schema:
 
 ```python
 FunctionTool(name="get_time", description="Get the current UTC time.", strict=False)
@@ -117,7 +119,7 @@ for item in response.output:
         item.call_id     # "call_abc123": links the call to its result
         item.name        # "get_weather"
         item.arguments   # {"city": "Paris", "units": "celsius"}, already parsed from JSON
-        item.raw         # the native OpenAI ResponseFunctionToolCall
+        item.raw         # the native OpenAI ResponseFunctionToolCall, or Anthropic ToolUseBlock
 ```
 
 A single response can contain **several** function calls, which is parallel tool calling. Handle them all.
@@ -145,6 +147,7 @@ response = client.send(model="oai/gpt-5.6-luna", input=history, tools=tools)
 | `call_id` | `str` | required | The `call_id` of the `FunctionCallOutputItem` this result answers |
 | `result` | `Any` | required | The tool's output. |
 | `is_error` | `bool` | `False` | Marks the call as failed. |
+| `provider_options` | `dict` | `{}` | Extra native fields merged into the result, such as Anthropic `cache_control`. They can't override the canonical fields. |
 
 The OpenAI adapter maps it to `{"type": "function_call_output", "call_id": ..., "output": ...}`. The `output` depends on `result` and `is_error`:
 
@@ -154,6 +157,8 @@ The OpenAI adapter maps it to `{"type": "function_call_output", "call_id": ..., 
 | `{"temp": 19}` or any other non-string | `False` | `'{"temp": 19}'` (JSON-encoded) |
 | a list of content-part dicts, e.g. `[{"type": "input_text", ...}]` | `False` | passed through as-is |
 | anything | `True` | `'{"error": <result>}'` (JSON-encoded) |
+
+The Anthropic adapter maps it to a `tool_result` block, `{"type": "tool_result", "tool_use_id": ..., "content": ...}`, inside a user turn. Strings and lists of content blocks such as `[{"type": "text", ...}]` are sent as-is, and other values are JSON-encoded. Anthropic has a native error flag, so `is_error=True` sends `"is_error": true` with the result unchanged. All results that answer one response are grouped into a single user turn, as Anthropic requires.
 
 OpenAI has no error flag on function call outputs, so Tessaract puts the error inside the output where the model can see it:
 
@@ -167,7 +172,7 @@ except Exception as exc:
 
 ## Native tool fields (`provider_options`)
 
-Everything in `provider_options` is merged into the native tool definition, except the canonical keys `type`, `name`, `description`, `strict` and `parameters`, which the canonical fields always control:
+Everything in `provider_options` is merged into the native tool definition, except the canonical keys `type`, `name`, `description` and `strict`, plus `parameters` (OpenAI) or `input_schema` (Anthropic). The canonical fields always control those. A common Anthropic use is a prompt-caching breakpoint, `provider_options={"cache_control": {"type": "ephemeral"}}`:
 
 ```python
 FunctionTool(
@@ -191,7 +196,7 @@ FunctionTool(
 
 ## Controlling tool use
 
-Tool choice isn't part of the canonical API yet. Pass OpenAI's native parameters through `request_options`:
+Tool choice isn't part of the canonical API yet. Pass the native parameters through `request_options`. For OpenAI:
 
 ```python
 client.send(
@@ -204,6 +209,8 @@ client.send(
     },
 )
 ```
+
+For Anthropic, use `request_options={"tool_choice": {"type": "auto"}}` (or `"any"`, `"none"`, `{"type": "tool", "name": "..."}`). Anthropic only allows `"auto"` and `"none"` while thinking is on.
 
 ## Streaming tool calls
 

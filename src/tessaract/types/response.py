@@ -12,6 +12,7 @@ from .output_types import (
 )
 
 if TYPE_CHECKING:
+    from anthropic.types import Usage as AnthropicUsage
     from openai.types.responses.response_usage import ResponseUsage
 
 
@@ -109,9 +110,10 @@ class OpenAIResponse(Response):
 @dataclass
 class AnthropicResponse(Response):
     provider: Literal["anthropic"] = "anthropic"
-    stop_reason: StopReason = field(kw_only=True)
+    # a StopReason, or the raw string for stop reasons Tessaract doesn't know yet
+    stop_reason: StopReason | str | None = field(kw_only=True)
 
-    provider_usage: ResponseUsage | None = field(default=None, repr=False)
+    provider_usage: AnthropicUsage | None = field(default=None, repr=False)
     
     @property
     def input_tokens(self) -> int | None:

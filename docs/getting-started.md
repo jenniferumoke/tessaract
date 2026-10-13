@@ -1,6 +1,6 @@
 # Getting started
 
-This guide covers installing Tessaract, configuring the OpenAI provider, sending requests, and keeping conversation history across turns.
+This guide covers installing Tessaract, configuring the OpenAI and Anthropic providers, sending requests, and keeping conversation history across turns.
 
 ## Installation
 
@@ -9,6 +9,8 @@ Tessaract requires **Python 3.11+**. Install the `openai` extra to use the OpenA
 ```bash
 python -m pip install "tessaract[openai]"
 ```
+
+For Anthropic, install the `anthropic` extra, or both: `python -m pip install "tessaract[openai,anthropic]"`.
 
 If you use uv, add it to your project with `uv add "tessaract[openai]"`.
 
@@ -43,6 +45,20 @@ client.send(model="oai/gpt-5.6-luna", input="Hi")
 ```
 
 If the prefix isn't registered, `send()` raises `ValueError`.
+
+### Anthropic
+
+`AnthropicProvider` works the same way. It builds an `anthropic.Anthropic` client from the same typed fields and `provider_args`, and reads `ANTHROPIC_API_KEY` when you don't pass `api_key`:
+
+```python
+from tessaract import AnthropicProvider, OpenAIProvider, Tessaract
+
+client = Tessaract(providers={"oai": OpenAIProvider(), "ant": AnthropicProvider()})
+
+client.send(model="ant/claude-opus-5-5", input="Hi")
+```
+
+You can register both and switch between them by changing only the model prefix. Requests, history, tools and reasoning use the same Tessaract types on both.
 
 ### Passing options to the OpenAI client
 
@@ -100,24 +116,37 @@ print(response.id)            # provider response id
 | `reasoning` | `ReasoningOptions \| None` | `None` | Reasoning effort and summary settings. See [Reasoning](reasoning.md) |
 | `tools` | `list[FunctionTool] \| None` | `None` | Tools the model may call. See [Tool calling](tool-calling.md) |
 | `request_options` | `dict \| None` | `None` | Extra native request parameters, passed through to the provider |
+| `max_tokens` | `int \| None` | `None` | Maximum output tokens. Sent to OpenAI as `max_output_tokens`, and left out when `None`. Anthropic requires a value, so when it's `None` the Anthropic adapter sends a default of **16,000** (`DEFAULT_ANTHROPIC_MAX_TOKENS`). Setting it explicitly is recommended for Anthropic models, because their output limits differ. |
+| `instructions` | `str \| None` | `None` | System instructions for this request. Sent to OpenAI as the native `instructions` parameter, and to Anthropic as the first `system` block. |
+
+### Instructions
+
+`instructions=` is the portable way to give a request system instructions:
+
+```python
+client.send(model="ant/claude-opus-5-5", input="Tell me about the sea.", instructions="Answer like a pirate.")
+```
+
+On OpenAI it's the native `instructions` parameter, so it applies to this request only and isn't carried forward with `previous_response_id`. `request_options={"instructions": ...}` still works on OpenAI. If you set both, `instructions=` wins. Anthropic has no native `instructions` option, so `request_options={"instructions": ...}` raises a `ValueError` on Anthropic that points to `instructions=`.
+
+You can also put `SystemPrompt` items in `input`. On OpenAI they're system messages in the conversation; on Anthropic they're moved to the top-level `system` parameter after `instructions`. Use `SystemPrompt` with a list of content blocks when you need Anthropic `cache_control` on the system prompt.
 
 ### `request_options`: native pass-through
 
-Anything in `request_options` is merged into the OpenAI `responses.create(...)` call. Use it for parameters Tessaract doesn't model yet:
+Anything in `request_options` is merged into the native call (`responses.create(...)` for OpenAI, `messages.create(...)` for Anthropic). Use it for parameters Tessaract doesn't model yet:
 
 ```python
 client.send(
     model="oai/gpt-5.6-luna",
     input="Tell me about the sea.",
     request_options={
-        "instructions": "Answer like a pirate.",   # system prompt
-        "max_output_tokens": 500,
         "temperature": 0.7,
+        "prompt_cache_key": "sea-facts",
     },
 )
 ```
 
-Canonical parameters (`model`, `input`, `tools`, `reasoning`) always take precedence. If `request_options` contains one of them, the canonical value wins. The same rule applies to keys inside `request_options["extra_body"]`.
+Canonical parameters (`model`, `input`, `tools`, `reasoning`, `max_tokens`, `instructions`) always take precedence. If `request_options` contains one of them, the canonical value wins. The same rule applies to keys inside `request_options["extra_body"]`.
 
 ## Multi-turn conversations
 
@@ -145,7 +174,7 @@ response = client.send(model="oai/gpt-5.6-luna", input=history)
 print(response.output_text)   # "Your name is Ada."
 ```
 
-Every output item keeps the provider's native object in `.raw`. When you send it back, Tessaract passes the raw object as-is, so the history stays lossless. Reasoning items, message IDs and anything else the provider needs for the next turn are preserved.
+Every output item keeps the provider's native object in `.raw`. When you send it back, Tessaract passes the raw object as-is, so the history stays lossless. For Anthropic, the adapter also groups the replayed blocks into the alternating user and assistant turns the Messages API expects. History is tied to the provider that produced it: replay output items only to the same provider. Reasoning items, message IDs and anything else the provider needs for the next turn are preserved.
 
 > Append **all** of `response.output`, not only the text. Reasoning models perform best, and function calling only works, when earlier reasoning items and function calls are sent back with their results.
 

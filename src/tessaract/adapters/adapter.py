@@ -1,10 +1,16 @@
-from typing import Any, Literal
+from collections.abc import Iterator
+from typing import TYPE_CHECKING, Any, Literal
 
 from typing_extensions import Protocol
 
-from ..types.output_types import TextOutputItem
+from ..types.output_types import OutputItem, TextOutputItem
 from ..providers.provider import Provider
 from ..tools.function import InputSchema
+
+if TYPE_CHECKING:
+    from ..types.request import Request
+    from ..types.response import Response
+    from ..types.streaming.event_types import StreamEventUnion
 
 
 class UserMessageProtocol(Protocol):
@@ -26,6 +32,7 @@ class FunctionToolResultProtocol(Protocol):
     call_id: str
     result: Any
     is_error: bool = False
+    provider_options: dict[str, Any]
 
 class FunctionToolSchemaProtocol(Protocol):
     name: str
@@ -57,6 +64,10 @@ class Adapter:
     def map_assistant_message(self, item: AssistantMessageProtocol) -> Any:
         raise NotImplementedError("not yet implemented...")
 
+    def map_output_item(self, item: OutputItem) -> Any:
+        '''Replays a previous output item (reasoning, function call, provider item) as native input.'''
+        return item.raw
+
     def map_tool_result(self, item: FunctionToolResultProtocol) -> Any:
         raise NotImplementedError("not yet implemented...")
 
@@ -67,4 +78,10 @@ class Adapter:
         raise NotImplementedError("not yet implemented...")
     
     def map_reasoning(self, item: ReasoningProtocol) -> Any:
+        raise NotImplementedError("not yet implemented")
+
+    def generate_sync(self, request: "Request") -> "Response":
+        raise NotImplementedError("not yet implemented")
+
+    def generate_stream(self, request: "Request") -> Iterator["StreamEventUnion"]:
         raise NotImplementedError("not yet implemented")

@@ -55,7 +55,8 @@ class ReasoningSummaryDeltaEvent(BaseModel):
 
 class ReasoningStartedEvent(BaseModel):
     type: Literal["reasoning.started"] = "reasoning.started"
-    item_id: str
+    item_id: str | None = None
+    output_index: int | None = None
     raw_event: Any | None = Field(
         default=None,
         exclude=True,

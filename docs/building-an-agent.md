@@ -161,7 +161,7 @@ def run_turn(history: list, user_text: str) -> str:
             input=history,
             tools=tools,
             reasoning=reasoning,
-            request_options={"instructions": INSTRUCTIONS},
+            instructions=INSTRUCTIONS,
         )
 
         # (a) Save EVERYTHING the model produced: reasoning, messages and calls
@@ -244,7 +244,7 @@ def run_turn_streaming(history: list, user_text: str) -> None:
             input=history,
             tools=tools,
             reasoning=reasoning,
-            request_options={"instructions": INSTRUCTIONS},
+            instructions=INSTRUCTIONS,
             stream=True,
         ):
             match event.type:
