@@ -4,26 +4,27 @@ This guide covers installing Tessaract, configuring the OpenAI and Anthropic pro
 
 ## Installation
 
-Tessaract requires **Python 3.11+**. Install the `openai` extra to use the OpenAI provider:
+Tessaract requires **Python 3.11+**. Install the extra for each provider you use:
 
 ```bash
-python -m pip install "tessaract[openai]"
+python -m pip install "tessaract[openai]"             # OpenAI
+python -m pip install "tessaract[anthropic]"          # Anthropic
+python -m pip install "tessaract[openai,anthropic]"   # both
 ```
 
-For Anthropic, install the `anthropic` extra, or both: `python -m pip install "tessaract[openai,anthropic]"`.
+If you use uv, add it to your project with `uv add "tessaract[openai,anthropic]"`.
 
-If you use uv, add it to your project with `uv add "tessaract[openai]"`.
+To work from a checkout of this repository, run `uv sync --extra openai --extra anthropic` or `python -m pip install -e ".[openai,anthropic]"` from the repository root.
 
-To work from a checkout of this repository, run `uv sync --extra openai` or `python -m pip install -e ".[openai]"` from the repository root.
-
-The extra installs the OpenAI SDK. Tessaract imports it only when you create an `OpenAIProvider`, so installing the core package alone is possible, but the OpenAI provider will ask you to install the extra before use.
+Each extra installs that vendor's SDK. Tessaract imports an SDK only when you create its provider, so installing the core package alone is possible, but `OpenAIProvider` and `AnthropicProvider` raise an `ImportError` that names the missing extra.
 
 ## Configure a provider
 
-Set your OpenAI API key in your shell:
+Set the API key for each provider you use in your shell:
 
 ```bash
-export OPENAI_API_KEY="your-api-key"
+export OPENAI_API_KEY="your-openai-key"
+export ANTHROPIC_API_KEY="your-anthropic-key"
 ```
 
 ```python
@@ -60,9 +61,9 @@ client.send(model="ant/claude-opus-5-5", input="Hi")
 
 You can register both and switch between them by changing only the model prefix. Requests, history, tools and reasoning use the same Tessaract types on both.
 
-### Passing options to the OpenAI client
+### Passing options to the SDK client
 
-`OpenAIProvider` builds an `openai.OpenAI` client. The common client options are fields on the provider, and they're passed to the SDK when they're set:
+Both providers take the same client options. `OpenAIProvider` builds an `openai.OpenAI` client. The common client options are fields on the provider, and they're passed to the SDK when they're set:
 
 ```python
 OpenAIProvider(
@@ -81,12 +82,28 @@ For any other `openai.OpenAI(...)` argument, such as `organization` or `project`
 OpenAIProvider(provider_args={"organization": "org_...", "project": "proj_..."})
 ```
 
-### API key
-
-If you don't pass `api_key`, `OpenAIProvider` reads the `OPENAI_API_KEY` environment variable. If neither is set, it raises `ValueError` when you create it, before any request is made:
+`AnthropicProvider` passes the same fields and `provider_args` to `anthropic.Anthropic(...)`:
 
 ```python
-client = Tessaract(providers={"oai": OpenAIProvider()})   # uses $OPENAI_API_KEY
+AnthropicProvider(
+    base_url="https://my-proxy.example.com",
+    timeout=120,
+    max_retries=3,
+    default_headers={"X-Team": "agents"},
+)
+```
+
+### API key
+
+If you don't pass `api_key`, `OpenAIProvider` reads the `OPENAI_API_KEY` environment variable and `AnthropicProvider` reads `ANTHROPIC_API_KEY`. If neither is set, the provider raises `ValueError` when you create it, before any request is made:
+
+```python
+client = Tessaract(
+    providers={
+        "oai": OpenAIProvider(),      # uses $OPENAI_API_KEY
+        "ant": AnthropicProvider(),   # uses $ANTHROPIC_API_KEY
+    }
+)
 ```
 
 A common pattern is a `.env` file with [`python-dotenv`](https://pypi.org/project/python-dotenv/):
@@ -102,8 +119,19 @@ load_dotenv()
 response = client.send(model="oai/gpt-5.6-luna", input="Write a haiku about tesseracts.")
 
 print(response.output_text)   # concatenated assistant text
-print(response.status)        # "completed", "incomplete", ...
 print(response.id)            # provider response id
+print(response.usage)         # normalized token counts
+```
+
+Provider-specific fields live on the response subclass. An `OpenAIResponse` has `status` (`"completed"`, `"incomplete"`, ...), and an `AnthropicResponse` has `stop_reason` (`"end_turn"`, `"tool_use"`, `"max_tokens"`, ...). `response.provider` is `"openai"` or `"anthropic"`; use `isinstance` when you need the subclass's fields:
+
+```python
+from tessaract.types.response import AnthropicResponse, OpenAIResponse
+
+if isinstance(response, AnthropicResponse):
+    print(response.stop_reason)
+elif isinstance(response, OpenAIResponse):
+    print(response.status)
 ```
 
 `send()` takes these parameters:
@@ -127,7 +155,7 @@ print(response.id)            # provider response id
 client.send(model="ant/claude-opus-5-5", input="Tell me about the sea.", instructions="Answer like a pirate.")
 ```
 
-On OpenAI it's the native `instructions` parameter, so it applies to this request only and isn't carried forward with `previous_response_id`. `request_options={"instructions": ...}` still works on OpenAI. If you set both, `instructions=` wins. Anthropic has no native `instructions` option, so `request_options={"instructions": ...}` raises a `ValueError` on Anthropic that points to `instructions=`.
+On OpenAI it's the native `instructions` parameter, so it applies to this request only and isn't carried forward with `previous_response_id`. `request_options={"instructions": ...}` still works on OpenAI. If you set both, `instructions=` wins. Anthropic has no native `instructions` option, so `request_options={"instructions": ...}` raises a `ValueError` on Anthropic that points to `instructions=`. On Anthropic, `instructions=` isn't stored anywhere, so pass it on every request.
 
 You can also put `SystemPrompt` items in `input`. On OpenAI they're system messages in the conversation; on Anthropic they're moved to the top-level `system` parameter after `instructions`. Use `SystemPrompt` with a list of content blocks when you need Anthropic `cache_control` on the system prompt.
 
@@ -146,7 +174,37 @@ client.send(
 )
 ```
 
-Canonical parameters (`model`, `input`, `tools`, `reasoning`, `max_tokens`, `instructions`) always take precedence. If `request_options` contains one of them, the canonical value wins. The same rule applies to keys inside `request_options["extra_body"]`.
+For Anthropic, the same mechanism reaches `messages.create(...)` parameters such as `temperature`, `stop_sequences`, `tool_choice` and `metadata`:
+
+```python
+client.send(
+    model="ant/claude-opus-5-5",
+    input="Tell me about the sea.",
+    max_tokens=4096,
+    request_options={"stop_sequences": ["\n\n"]},
+)
+```
+
+Canonical parameters (`model`, `input`, `tools`, `reasoning`, `max_tokens`, `instructions`) always take precedence. If `request_options` contains one of them, the canonical value wins. On Anthropic, `messages`, `system`, `thinking` and `output_config.effort` are canonical too, since the adapter builds them from `input`, `instructions` and `reasoning`. Other `output_config` fields, such as a structured output `format`, are kept. The same rule applies to keys inside `request_options["extra_body"]`.
+
+### Prompt caching on Anthropic
+
+Anthropic caches a prompt prefix up to each `cache_control` breakpoint. Tessaract passes `cache_control` through wherever Anthropic accepts it:
+
+```python
+from tessaract import FunctionTool, FunctionToolResult, SystemPrompt
+
+# a system prompt, as a list of content blocks
+SystemPrompt(content=[{"type": "text", "text": LONG_INSTRUCTIONS, "cache_control": {"type": "ephemeral"}}])
+
+# a tool definition
+FunctionTool(name="search", description="...", provider_options={"cache_control": {"type": "ephemeral"}})
+
+# a tool result
+FunctionToolResult(call_id=call.call_id, result=output, provider_options={"cache_control": {"type": "ephemeral"}})
+```
+
+`UserMessage` also accepts a list of native content blocks, so you can set `cache_control` on a block there too. Cache reads and writes are reported in `response.usage.cached_input_tokens` and `response.usage.cache_write_input_tokens`.
 
 ## Multi-turn conversations
 
@@ -180,7 +238,7 @@ Every output item keeps the provider's native object in `.raw`. When you send it
 
 ### A simple chat loop
 
-With `OPENAI_API_KEY` set as above, save this example as `chat.py` and run `python chat.py`:
+With `OPENAI_API_KEY` set as above, save this example as `chat.py` and run `python chat.py`. To chat with Claude instead, register `AnthropicProvider()` under `"ant"` and use `model="ant/claude-opus-5-5"`:
 
 ```python
 from tessaract import OpenAIProvider, Tessaract, UserMessage

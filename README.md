@@ -40,42 +40,48 @@ More concretely, Tessaract exposes a **canonical model of the LLM ecosystem**: r
 
 ## Installation
 
-Tessaract requires **Python 3.11+**. Install the `openai` extra to use the currently supported provider.
+Tessaract requires **Python 3.11+**. Install the extra for each provider you use: `openai`, `anthropic`, or both.
 
 With pip:
 
 ```bash
-python -m pip install "tessaract[openai]"
+python -m pip install "tessaract[openai]"             # OpenAI
+python -m pip install "tessaract[anthropic]"          # Anthropic
+python -m pip install "tessaract[openai,anthropic]"   # both
 ```
 
 With uv:
 
 ```bash
-uv add "tessaract[openai]"
+uv add "tessaract[openai,anthropic]"
 ```
 
 ---
 
 ## Quickstart
 
-Set your OpenAI API key:
+Set the API key for each provider you use:
 
 ```bash
-export OPENAI_API_KEY="your-api-key"
+export OPENAI_API_KEY="your-openai-key"
+export ANTHROPIC_API_KEY="your-anthropic-key"
 ```
 
 Then send your first request:
 
 ```python
-from tessaract import OpenAIProvider, Tessaract
+from tessaract import AnthropicProvider, OpenAIProvider, Tessaract
 
-client = Tessaract(providers={"oai": OpenAIProvider()})
+client = Tessaract(providers={"oai": OpenAIProvider(), "ant": AnthropicProvider()})
+
 response = client.send(model="oai/gpt-6-luna", input="Say hello in five words.")
+print(response.output_text)
 
+response = client.send(model="ant/claude-opus-5-5", input="Say hello in five words.")
 print(response.output_text)
 ```
 
-`OpenAIProvider` reads `OPENAI_API_KEY` from the environment. The `oai` prefix is your choice; Tessaract sends the model name after `/` to OpenAI. For Anthropic, install the `anthropic` extra, register `AnthropicProvider()` (it reads `ANTHROPIC_API_KEY`) under a prefix such as `ant`, and send to `ant/claude-opus-5-5`. For multi-turn conversations, try the [simple chat loop](https://tessaractai.com/getting-started/#a-simple-chat-loop).
+`OpenAIProvider` reads `OPENAI_API_KEY` and `AnthropicProvider` reads `ANTHROPIC_API_KEY` from the environment. Register only the providers you need. The `oai` and `ant` prefixes are your choice; Tessaract sends the model name after `/` to the provider registered under that prefix. For multi-turn conversations, try the [simple chat loop](https://tessaractai.com/getting-started/#a-simple-chat-loop).
 
 ---
 
@@ -170,6 +176,8 @@ def run_agent(history: list, user_text: str) -> str:
 history: list = []
 print(run_agent(history, "What's the weather in Paris, and what time is it?"))
 ```
+
+To run the same agent on Anthropic, register `AnthropicProvider` and change `model` to `"ant/claude-opus-5-5"`. Nothing else in the loop changes. Anthropic requires `max_tokens`; Tessaract sends 16,000 when you don't set it, but passing `max_tokens=` explicitly is recommended.
 
 The step-by-step walkthrough is in the [building an agent guide](https://tessaractai.com/building-an-agent/), with runnable versions in [`examples/`](https://github.com/jenniferumoke/tessaract/tree/main/examples).
 
