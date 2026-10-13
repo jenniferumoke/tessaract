@@ -123,15 +123,20 @@ print(response.id)            # provider response id
 print(response.usage)         # normalized token counts
 ```
 
-Provider-specific fields live on the response subclass. An `OpenAIResponse` has `status` (`"completed"`, `"incomplete"`, ...), and an `AnthropicResponse` has `stop_reason` (`"end_turn"`, `"tool_use"`, `"max_tokens"`, ...). `response.provider` is `"openai"` or `"anthropic"`; use `isinstance` when you need the subclass's fields:
+Every response has a canonical `status` (`"completed"`, `"incomplete"`, ...). When the output stopped early, `incomplete_reason` says why, the same way on both providers:
 
 ```python
-from tessaract.types.response import AnthropicResponse, OpenAIResponse
+if response.status == "incomplete":
+    print(response.incomplete_reason)   # "max_tokens", "context_window", "content_filter" or "paused"
+```
+
+Provider-specific fields live on the response subclass. For example, an `AnthropicResponse` also has the native `stop_reason` (`"end_turn"`, `"tool_use"`, `"max_tokens"`, ...). `response.provider` is `"openai"` or `"anthropic"`; use `isinstance` when you need the subclass's fields:
+
+```python
+from tessaract.types.response import AnthropicResponse
 
 if isinstance(response, AnthropicResponse):
     print(response.stop_reason)
-elif isinstance(response, OpenAIResponse):
-    print(response.status)
 ```
 
 `send()` takes these parameters:

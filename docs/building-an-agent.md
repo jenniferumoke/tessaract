@@ -340,7 +340,7 @@ You can register both providers on one client and pick per request. Keep each co
 | **Bad arguments** | Use `strict=True` with a complete `required` list so the provider enforces the schema. Validate arguments again in your functions if they have side effects. |
 | **Dangerous tools** | Ask the user to confirm before running tools that write, delete, spend money or send messages. |
 | **Stateless mode** | If you run OpenAI with `request_options={"store": False}`, it can't look up earlier reasoning items by ID. Add `"include": ["reasoning.encrypted_content"]` so the reasoning items carry their encrypted content back in the history. Anthropic is stateless already, and thinking blocks carry their signature. |
-| **Truncated output** | On Anthropic, `response.stop_reason == "max_tokens"` means the answer was cut off. Raise `max_tokens`. |
+| **Truncated output** | `response.status == "incomplete"` means the answer stopped early. Check `response.incomplete_reason`: for `"max_tokens"`, raise `max_tokens`; for `"paused"`, append the output to the history and send again to let the model continue. |
 | **Prompt caching** | On Anthropic, add `cache_control` breakpoints to the system prompt or tools. See [Prompt caching on Anthropic](getting-started.md#prompt-caching-on-anthropic). |
 | **Debugging** | `response.raw_response` (and `event.raw_event` when streaming) holds the untouched OpenAI or Anthropic SDK object. |
 | **Unmodeled output** | Items Tessaract doesn't model yet, such as messages with citations, come back as `ProviderOutputItem` with the native object in `.raw`. They still replay correctly in the history. |

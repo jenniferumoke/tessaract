@@ -241,6 +241,8 @@ Use `SystemPrompt(content="...")` in an input list to provide system instruction
 | `id` | `str` | Provider response ID |
 | `model` | `str` | Model name |
 | `provider` | `"openai" \| "anthropic" \| None` | Which provider produced the response |
+| `status` | `ResponseStatus \| None` | Canonical status: `"completed"` when the model finished its turn (including when it stops to call tools), `"incomplete"` when the output stopped early. `None` when the provider reports nothing Tessaract can map |
+| `incomplete_reason` | `IncompleteReason \| None` | Why the response is incomplete. `None` unless `status` is `"incomplete"`, and also `None` when the provider gives no reason |
 | `output` | `list[OutputType]` | Typed output items, in order |
 | `usage` | `Usage \| None` | Normalized token counts when the provider reports usage |
 | `error` | `ResponseError \| None` | Set if the provider reports an error |
@@ -250,11 +252,22 @@ Use `SystemPrompt(content="...")` in an input list to provide system instruction
 
 `Usage` includes `input_tokens`, `output_tokens`, `total_tokens`, `cached_input_tokens`, `cache_write_input_tokens`, and `reasoning_tokens`. The detail fields are `None` when the provider does not report them. `OpenAIResponse.provider_usage` holds the native OpenAI SDK usage object, or `None` when usage is unavailable. Completed streaming responses expose both fields through `ResponseCompletedEvent.response`.
 
-`OpenAIResponse` adds `status` (a `ResponseStatus`, e.g. `"completed"` or `"incomplete"`). `OpenAIResponse.input_tokens` and `OpenAIResponse.cached_input_tokens` provide direct access to the corresponding normalized usage counts. Each returns `None` when usage is unavailable; `cached_input_tokens` is also `None` when the provider does not report that detail.
+`OpenAIResponse` takes `status` from OpenAI's response status, and `incomplete_reason` from `incomplete_details.reason`. `OpenAIResponse.input_tokens` and `OpenAIResponse.cached_input_tokens` provide direct access to the corresponding normalized usage counts. Each returns `None` when usage is unavailable; `cached_input_tokens` is also `None` when the provider does not report that detail.
 
-`AnthropicResponse` has `stop_reason` (a `StopReason`, or the raw string for a stop reason Tessaract doesn't know yet) instead of `status`, and `provider_usage` holds the native Anthropic `Usage`. Its normalized `input_tokens` includes cache reads and cache writes, so it means the same as OpenAI's; `provider_usage.input_tokens` is Anthropic's uncached count. `cached_input_tokens` is Anthropic's `cache_read_input_tokens`, `cache_write_input_tokens` is `cache_creation_input_tokens`, and `reasoning_tokens` is the thinking token count when Anthropic reports it. `AnthropicResponse` has the same `input_tokens` and `cached_input_tokens` properties as `OpenAIResponse`.
+`AnthropicResponse` adds `stop_reason` (a `StopReason`, or the raw string for a stop reason Tessaract doesn't know yet). Anthropic has no response status, so `status` and `incomplete_reason` are derived from `stop_reason`:
 
-`send()` is typed to return `Response`, so use `isinstance(response, AnthropicResponse)` (or `OpenAIResponse`) before reading `status` or `stop_reason`. Both classes are in `tessaract.types.response`.
+| `stop_reason` | `status` | `incomplete_reason` |
+| --- | --- | --- |
+| `end_turn`, `stop_sequence`, `tool_use` | `completed` | `None` |
+| `max_tokens` | `incomplete` | `max_tokens` |
+| `model_context_window_exceeded` | `incomplete` | `context_window` |
+| `refusal` | `incomplete` | `content_filter` |
+| `pause_turn`, `compaction` | `incomplete` | `paused` |
+| unknown or `None` | `None` | `None` |
+
+`stop_reason` stays available for detail that `status` doesn't carry, such as whether the model stopped to call a tool. `AnthropicResponse` also has `provider_usage` holds the native Anthropic `Usage`. Its normalized `input_tokens` includes cache reads and cache writes, so it means the same as OpenAI's; `provider_usage.input_tokens` is Anthropic's uncached count. `cached_input_tokens` is Anthropic's `cache_read_input_tokens`, `cache_write_input_tokens` is `cache_creation_input_tokens`, and `reasoning_tokens` is the thinking token count when Anthropic reports it. `AnthropicResponse` has the same `input_tokens` and `cached_input_tokens` properties as `OpenAIResponse`.
+
+`status` and `incomplete_reason` are on every `Response`. `send()` is typed to return `Response`, so use `isinstance(response, AnthropicResponse)` (or `OpenAIResponse`) before reading provider-specific fields such as `stop_reason`. Both classes are in `tessaract.types.response`.
 
 ### `StopReason`
 
@@ -263,6 +276,17 @@ A `str` enum with the values `end_turn`, `max_tokens`, `stop_sequence`, `tool_us
 ### `ResponseStatus`
 
 A `str` enum with the values `queued`, `in_progress`, `completed`, `incomplete`, `failed` and `cancelled`.
+
+### `IncompleteReason`
+
+A `str` enum, in `tessaract.types.response`:
+
+| Value | Meaning | OpenAI | Anthropic |
+| --- | --- | --- | --- |
+| `max_tokens` | Output hit the `max_tokens` limit | `max_output_tokens` | `max_tokens` |
+| `context_window` | The conversation filled the model's context window | — | `model_context_window_exceeded` |
+| `content_filter` | Output was stopped by a safety filter or refusal | `content_filter` | `refusal` |
+| `paused` | The turn isn't finished; send the output back to let the model continue | — | `pause_turn`, `compaction` |
 
 ### `ResponseError`
 

@@ -17,7 +17,13 @@ from ...types.output_types import (
     TextOutputItem,
 )
 from ...types.request import Request
-from ...types.response import OpenAIResponse, ResponseError, Usage
+from ...types.response import (
+    IncompleteReason,
+    OpenAIResponse,
+    ResponseError,
+    ResponseStatus,
+    Usage,
+)
 from ...types.streaming.event_types import (
     CustomProviderEvent,
     FunctionCallArgumentDeltaEvent,
@@ -348,6 +354,22 @@ class OpenAIAdapter(Adapter):
                     raw_event=event
                 )
 
+    def _normalize_status(self, status) -> ResponseStatus | None:
+        try:
+            return ResponseStatus(status) if status is not None else None
+        except ValueError:
+            return None
+
+    def _normalize_incomplete_reason(self, raw_response) -> IncompleteReason | None:
+        details = getattr(raw_response, "incomplete_details", None)
+        match getattr(details, "reason", None):
+            case "max_output_tokens":
+                return IncompleteReason.MAX_TOKENS
+            case "content_filter":
+                return IncompleteReason.CONTENT_FILTER
+            case _:
+                return None
+
     def _normalize_response(self, raw_response) -> OpenAIResponse:
         provider_usage = raw_response.usage
         usage = None
@@ -366,7 +388,8 @@ class OpenAIAdapter(Adapter):
         return OpenAIResponse(
             id=raw_response.id,
             model=raw_response.model,
-            status=raw_response.status,
+            status=self._normalize_status(raw_response.status),
+            incomplete_reason=self._normalize_incomplete_reason(raw_response),
             output=self._normalize_output(raw_response.output),
             error=ResponseError(message=raw_response.error.message, code=raw_response.error.code) if raw_response.error else None,
             usage=usage,

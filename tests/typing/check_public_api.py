@@ -42,6 +42,8 @@ def stream_events(client: Tessaract) -> None:
 def response_output(client: Tessaract) -> None:
     response = client.send(model="oai/m", input="hi", instructions="Be brief.", max_tokens=100)
     print(response.output_text, response.usage.input_tokens if response.usage else None)
+    if response.status == "incomplete":
+        print(response.incomplete_reason)
 
     for item in response.output:
         if item.type == "reasoning":

@@ -9,7 +9,7 @@ from tessaract.types.output_types import (
     ProviderOutputItem,
     ReasoningOutputItem,
 )
-from tessaract.types.response import AnthropicResponse, StopReason
+from tessaract.types.response import AnthropicResponse, IncompleteReason, ResponseStatus, StopReason
 
 
 def _message(content, stop_reason="end_turn", usage=None):
@@ -45,6 +45,8 @@ def test_sync_response_is_normalized(anthropic_client, anthropic_api):
     assert response.provider == "anthropic"
     assert response.model == "claude-test-20260101"
     assert response.stop_reason is StopReason.TOOL_USE
+    assert response.status is ResponseStatus.COMPLETED
+    assert response.incomplete_reason is None
 
     reasoning, call = response.output
     assert isinstance(reasoning, ReasoningOutputItem)
@@ -96,6 +98,35 @@ def test_unknown_and_redacted_blocks_pass_through(anthropic_client, anthropic_ap
 
 def test_unknown_stop_reason_is_kept_as_a_string(anthropic_adapter):
     assert anthropic_adapter._normalize_stop_reason("something_new") == "something_new"
+
+@pytest.mark.parametrize(
+    ("stop_reason", "status", "incomplete_reason"),
+    [
+        ("end_turn", ResponseStatus.COMPLETED, None),
+        ("stop_sequence", ResponseStatus.COMPLETED, None),
+        ("tool_use", ResponseStatus.COMPLETED, None),
+        ("max_tokens", ResponseStatus.INCOMPLETE, IncompleteReason.MAX_TOKENS),
+        ("model_context_window_exceeded", ResponseStatus.INCOMPLETE, IncompleteReason.CONTEXT_WINDOW),
+        ("refusal", ResponseStatus.INCOMPLETE, IncompleteReason.CONTENT_FILTER),
+        ("pause_turn", ResponseStatus.INCOMPLETE, IncompleteReason.PAUSED),
+        ("compaction", ResponseStatus.INCOMPLETE, IncompleteReason.PAUSED),
+        ("something_new", None, None),
+        (None, None, None),
+    ],
+)
+def test_stop_reason_maps_to_canonical_status(anthropic_adapter, stop_reason, status, incomplete_reason):
+    assert anthropic_adapter._normalize_status(
+        anthropic_adapter._normalize_stop_reason(stop_reason)
+    ) == (status, incomplete_reason)
+
+def test_sync_response_has_canonical_status(anthropic_client, anthropic_api):
+    anthropic_api.message = _message([{"type": "text", "text": "Par"}], stop_reason="max_tokens")
+
+    response = anthropic_client.send(model="ant/claude-test", input="hi")
+
+    assert response.status is ResponseStatus.INCOMPLETE
+    assert response.incomplete_reason is IncompleteReason.MAX_TOKENS
+    assert response.stop_reason is StopReason.MAX_TOKENS
 
 def test_tool_loop_round_trip_sends_valid_turns(anthropic_client, anthropic_api):
     anthropic_api.message = _message([THINKING, TOOL_USE], stop_reason="tool_use")
@@ -201,6 +232,7 @@ def test_stream_events_are_normalized(anthropic_client, anthropic_api):
     [completed] = by_type["response.completed"]
     response = completed.response
     assert response.stop_reason is StopReason.TOOL_USE
+    assert response.status is ResponseStatus.COMPLETED
     assert response.usage.output_tokens == 40
     assert [item.type for item in response.output] == ["reasoning", "assistant_message", "function_call"]
 
