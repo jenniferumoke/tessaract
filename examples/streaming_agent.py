@@ -1,14 +1,14 @@
-"""A streaming reasoning + tool-calling agent built on Tessaract and the OpenAI API.
+"""A streaming reasoning + tool-calling agent built on Tessaract.
 
 Reuses the tools from examples/agent.py and streams reasoning summaries and
 answer text as they are generated.
 
-Run:
+Run with OpenAI, or set TESSARACT_MODEL=ant/claude-opus-5-5 for Anthropic:
     export OPENAI_API_KEY=sk-...
-    uv run python examples/streaming_agent.py
+    uv run --extra openai python examples/streaming_agent.py
 """
 
-from agent import INSTRUCTIONS, MAX_STEPS, MODEL, REASONING, TOOLS, client, execute
+from agent import INSTRUCTIONS, MAX_STEPS, MAX_TOKENS, MODEL, REASONING, TOOLS, client, execute
 
 from tessaract import UserMessage
 
@@ -24,7 +24,8 @@ def run_turn(history: list, user_text: str) -> None:
             input=history,
             tools=TOOLS,
             reasoning=REASONING,
-            request_options={"instructions": INSTRUCTIONS},
+            instructions=INSTRUCTIONS,
+            max_tokens=MAX_TOKENS,
             stream=True,
         ):
             match event.type:

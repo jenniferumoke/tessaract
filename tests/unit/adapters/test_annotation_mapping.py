@@ -58,17 +58,6 @@ def test_openai_refusal_still_uses_provider_output(openai_adapter):
     assert isinstance(openai_adapter._normalize_output_item(message), ProviderOutputItem)
 
 
-@pytest.fixture
-def anthropic_adapter():
-    pytest.importorskip("anthropic")
-    from tessaract.adapters.anthropic.anthropic_adapter import AnthropicAdapter
-    from tessaract.providers.anthropic_provider import AnthropicProvider
-
-    provider = AnthropicProvider(api_key="test-api-key")
-    yield AnthropicAdapter(provider)
-    provider.client.close()
-
-
 @pytest.mark.parametrize(
     ("native_citation", "source", "title"),
     [

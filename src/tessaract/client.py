@@ -52,7 +52,8 @@ class Tessaract:
         max_tokens: int | None,
         tools: list[FunctionTool],
         request_options: dict[str, Any],
-        stream: bool
+        stream: bool,
+        instructions: str | None = None
     ) -> Request:
 
         all_items = []
@@ -74,7 +75,7 @@ class Tessaract:
                     all_items.append(self.adapters[provider].map_assistant_message(message))
 
                 elif isinstance(message, OutputItem):
-                    all_items.append(message.raw)
+                    all_items.append(self.adapters[provider].map_output_item(message))
 
                 else:
                     raise TypeError(f"Unsupported input type: {type(message).__name__}")
@@ -86,7 +87,8 @@ class Tessaract:
             tools=tools,
             provider_options=request_options,
             stream=stream,
-            max_tokens=max_tokens
+            max_tokens=max_tokens,
+            instructions=instructions
         )
 
     @overload
@@ -97,7 +99,8 @@ class Tessaract:
             reasoning: ReasoningOptions | None = None,
             tools: list[FunctionTool] | None = None,
             request_options: dict[str, Any] | None = None,
-            max_tokens: int | None = None
+            max_tokens: int | None = None,
+            instructions: str | None = None
             ) -> Response: ...
 
 
@@ -110,7 +113,7 @@ class Tessaract:
             reasoning: ReasoningOptions | None = None,
             tools: list[FunctionTool] | None = None,
             request_options: dict[str, Any] | None = None,
-
+            instructions: str | None = None
             ) -> Response: ...
 
     @overload
@@ -121,7 +124,8 @@ class Tessaract:
             reasoning: ReasoningOptions | None = None,
             tools: list[FunctionTool] | None = None,
             request_options: dict[str, Any] | None = None,
-            max_tokens: int | None = None
+            max_tokens: int | None = None,
+            instructions: str | None = None
             ) -> Iterator[StreamEventUnion]: ...
 
     @overload
@@ -133,7 +137,8 @@ class Tessaract:
         reasoning: ReasoningOptions | None = None,
         tools: list[FunctionTool] | None = None,
         request_options: dict[str, Any] | None = None,
-        max_tokens: int | None = None
+        max_tokens: int | None = None,
+        instructions: str | None = None
     ) -> Response | Iterator[StreamEventUnion]: ...
 
 
@@ -144,34 +149,50 @@ class Tessaract:
             reasoning: ReasoningOptions | None = None,
             tools: list[FunctionTool] | None = None,
             request_options: dict[str, Any] | None = None,
-            max_tokens: int | None = None
+            max_tokens: int | None = None,
+            instructions: str | None = None
         ) -> Response | Iterator[StreamEventUnion]:
+        '''Send a request to the provider registered under the model's prefix.
+
+            Args:
+                model: "<provider prefix>/<model name>", e.g. "oai/gpt-5.6-luna" or "ant/claude-opus-5-5".
+                input: a string, or a list of strings, input items and output items from earlier responses.
+                stream: return an iterator of stream events instead of a Response.
+                reasoning: canonical reasoning options, mapped to each provider's native parameters.
+                tools: function tools the model may call.
+                request_options: native request parameters, merged in. Canonical parameters win.
+                max_tokens: the maximum number of output tokens. Sent to OpenAI as max_output_tokens
+                    (omitted when None). Anthropic requires it: when None, the Anthropic adapter sends
+                    DEFAULT_ANTHROPIC_MAX_TOKENS (16,000). Setting it explicitly is recommended for
+                    Anthropic models, since output limits differ between models.
+                instructions: system instructions for this request. Sent to OpenAI as the native
+                    instructions parameter, and to Anthropic as the first block of system.
+        '''
 
         provider, model = self._normalize_model_name(model=model)
 
         if provider not in self.providers:
             raise ValueError("provider prefix must match registered provider in tessaract object")
 
-        _request_provider = self.providers[provider]
-
         _tools = tools if tools is not None else []
-
-        # if reasoning is not None:
-        #     _reasoning = reasoning
 
         _request_options = request_options if request_options is not None else {}
 
-        _tessaract_request = self._build_request_model(model=model, input=input, provider=provider, reasoning=reasoning, tools=_tools, request_options=_request_options, stream=stream, max_tokens=max_tokens)
+        _tessaract_request = self._build_request_model(
+            model=model,
+            input=input,
+            provider=provider,
+            reasoning=reasoning,
+            tools=_tools,
+            request_options=_request_options,
+            stream=stream,
+            max_tokens=max_tokens,
+            instructions=instructions
+        )
 
         adapter = self.adapters[provider]
 
-        if isinstance(_request_provider, OpenAIProvider):
-            if stream == True:
-                return adapter.generate_stream(request=_tessaract_request) 
+        if stream:
+            return adapter.generate_stream(request=_tessaract_request)
 
-            return adapter.generate_sync(request=_tessaract_request)
-
-        elif isinstance(_request_provider, AnthropicProvider):
-            return adapter.generate_sync(request=_tessaract_request)
-
-        raise NotImplementedError("Unsupported provider")
+        return adapter.generate_sync(request=_tessaract_request)

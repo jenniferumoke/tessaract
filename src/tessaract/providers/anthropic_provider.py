@@ -1,5 +1,5 @@
-from typing import TYPE_CHECKING, cast
 import os
+from typing import TYPE_CHECKING, cast
 
 from .provider import Provider
 
@@ -15,12 +15,12 @@ class AnthropicProvider(Provider):
             if exc.name != "anthropic":
                 raise
             raise ImportError(
-                "Anthropic support requires the optional dependency"
+                "Anthropic support requires the optional dependency. "
                 'Install it with: pip install "tessaract[anthropic]"'
             ) from exc
         
         if self.api_key is None:
-            self.api_key = os.environ.get("OPENAI_API_KEY")
+            self.api_key = os.environ.get("ANTHROPIC_API_KEY")
 
         if self.api_key is None:
             raise ValueError(
@@ -28,7 +28,7 @@ class AnthropicProvider(Provider):
                 "or set the ANTHROPIC_API_KEY environment variable."
             )
         
-        self._client = Anthropic(api_key=self.api_key, **self.provider_args)
+        self._client = Anthropic(**self._client_kwargs())
 
     @property
     def client(self) -> "Anthropic":

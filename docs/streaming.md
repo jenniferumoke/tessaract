@@ -8,14 +8,14 @@ for event in client.send(model="oai/gpt-5.6-luna", input="Tell me a story.", str
         print(event.delta, end="", flush=True)
 ```
 
-Every event has a `type` string that you can branch on, and a `raw_event` field that holds the untouched OpenAI SDK event.
+Every event has a `type` string that you can branch on, and a `raw_event` field that holds the untouched provider SDK event. The same events are emitted for OpenAI and Anthropic.
 
 ## Event reference
 
 | `type` | Class | Emitted when | Key fields |
 | --- | --- | --- | --- |
 | `response_started` | `ResponseStartedEvent` | The provider creates the response | `message` |
-| `reasoning.started` | `ReasoningStartedEvent` | A reasoning summary part begins | `item_id` |
+| `reasoning.started` | `ReasoningStartedEvent` | A reasoning summary part begins | `item_id` (OpenAI), `output_index` (Anthropic) |
 | `reasoning_summary.delta` | `ReasoningSummaryDeltaEvent` | A chunk of reasoning summary text arrives | `delta`, `item_id`, `output_index` |
 | `reasoning_text.delta` | `ReasoningTextDeltaEvent` | A chunk of raw reasoning text arrives, on models that expose it | `delta`, `item_id`, `output_index` |
 | `text.delta` | `TextDeltaEvent` | A chunk of assistant text arrives | `delta`, `output_index`, `content_index`, `provider` |
@@ -26,7 +26,24 @@ Every event has a `type` string that you can branch on, and a `raw_event` field 
 | `response.failed` | `ResponseFailedEvent` | The response failed, or the provider sent an error event | `message`, `error` (`ResponseError` with `message` and `code`), `response` (when available) |
 | *(native type)* | `CustomProviderEvent` | Any provider event without a canonical equivalent, e.g. `response.in_progress` or `response.output_text.done` | `type` (the native event name), `raw_event` |
 
-> A stream ends with either `response.completed` or `response.failed`. Transport and HTTP errors are still raised as OpenAI SDK exceptions, so wrap the loop in `try`/`except openai.APIError` if you need to handle them.
+> A stream ends with either `response.completed` or `response.failed`. Transport and HTTP errors before the stream starts are still raised as SDK exceptions, so wrap the loop in `try`/`except openai.APIError` (or `anthropic.APIError`) if you need to handle them.
+
+### How Anthropic events map
+
+| Anthropic event | Tessaract event |
+| --- | --- |
+| `message_start` | `response_started` |
+| `content_block_start` for a `thinking` block | `reasoning.started` |
+| `content_block_start` for a `tool_use` block | `tool_call.started` |
+| `thinking_delta` | `reasoning_summary.delta` (Anthropic thinking is summarized) |
+| `text_delta` | `text.delta` |
+| `input_json_delta` | `tool_arguments.delta` |
+| `content_block_stop` | `output_item.done`, with the finished block as an output item |
+| `message_stop` | `response.completed` |
+| an `error` event mid-stream | `response.failed` |
+| `signature_delta`, `citations_delta`, `message_delta`, other `content_block_start`s | `CustomProviderEvent` |
+
+Each Anthropic text block produces its own `output_item.done`. The `Response` in `response.completed` merges neighbouring text blocks into one `AssistantMessage`, like a non-streaming call.
 
 ## Use `response.completed` for the final state
 
@@ -94,6 +111,6 @@ The complete runnable version is [`examples/streaming_agent.py`](https://github.
 
 ## Notes
 
-- The stream is a generator backed by the OpenAI SDK's `responses.stream(...)` context manager. The HTTP connection closes when you finish iterating, or when the generator is garbage-collected if you `break` early.
+- The stream is a generator backed by the OpenAI SDK's `responses.stream(...)` or the Anthropic SDK's `messages.stream(...)` context manager. The HTTP connection closes when you finish iterating, or when the generator is garbage-collected if you `break` early.
 - Consume the whole stream before you use `completed`. If you stop early, you don't get a `response.completed` event.
 - `CustomProviderEvent` passes through every native event that Tessaract doesn't model. Ignore it, or check `event.type` / `event.raw_event` for provider-specific handling.

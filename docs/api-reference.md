@@ -5,7 +5,7 @@ Everything listed as exported can be imported from the top-level package:
 ```python
 from tessaract import (
     Tessaract,
-    OpenAIProvider,
+    OpenAIProvider, AnthropicProvider,
     FunctionTool, InputSchema, Property,
     UserMessage, SystemPrompt, FunctionToolResult,
     ReasoningOptions,
@@ -23,7 +23,7 @@ Other types can be imported from their modules, shown under each heading.
 `tessaract.client.Tessaract`
 
 ```python
-Tessaract(providers: dict[str, OpenAIProvider])
+Tessaract(providers: dict[str, OpenAIProvider | AnthropicProvider])
 ```
 
 This creates a client and builds one adapter per registered provider. Any provider type without an adapter raises `NotImplementedError`.
@@ -38,6 +38,8 @@ send(
     reasoning: ReasoningOptions | None = None,
     tools: list[FunctionTool] | None = None,
     request_options: dict[str, Any] | None = None,
+    max_tokens: int | None = None,
+    instructions: str | None = None,
 ) -> Response | Iterator[StreamEventUnion]
 ```
 
@@ -49,12 +51,15 @@ send(
 | `reasoning` | See [`ReasoningOptions`](#reasoningoptions). |
 | `tools` | See [`FunctionTool`](#functiontool). |
 | `request_options` | Native request parameters merged into the provider call. Canonical parameters take precedence. |
+| `max_tokens` | Maximum output tokens. OpenAI: `max_output_tokens`, left out when `None`. Anthropic: `max_tokens`, defaulting to `DEFAULT_ANTHROPIC_MAX_TOKENS` (16,000) when `None`; setting it explicitly is recommended. |
+| `instructions` | System instructions. OpenAI: the native `instructions` parameter. Anthropic: the first `system` block. |
 
 **Raises:**
 
 - `ValueError` if `model` isn't `"<prefix>/<model-name>"`, or if the prefix isn't registered
 - `TypeError` if an item in `input` has an unsupported type
-- any exception raised by the provider SDK, such as `openai.APIError`
+- `ValueError` if a canonical value can't be used by the provider, such as `mode="pro"` on Anthropic
+- any exception raised by the provider SDK, such as `openai.APIError` or `anthropic.APIError`
 
 ---
 
@@ -90,6 +95,18 @@ This creates an `openai.OpenAI` client from the fields that are set, plus `provi
 
 **Raises:** `ImportError` if the `openai` package isn't installed, and `ValueError` if no API key is found.
 
+### `AnthropicProvider`
+
+`tessaract.AnthropicProvider`
+
+```python
+AnthropicProvider(api_key="sk-ant-...", base_url=..., timeout=..., provider_args={...})
+```
+
+This creates an `anthropic.Anthropic` client from the fields that are set, plus `provider_args`. If `api_key` is `None`, it reads `ANTHROPIC_API_KEY`.
+
+**Raises:** `ImportError` if the `anthropic` package isn't installed, and `ValueError` if no API key is found.
+
 ---
 
 ## Requests
@@ -101,8 +118,10 @@ This creates an `openai.OpenAI` client from the fields that are set, plus `provi
 | Field | Type | Default |
 | --- | --- | --- |
 | `effort` | `"none" \| "minimal" \| "low" \| "medium" \| "high" \| "extra_high" \| "max" \| None` | `None` |
-| `summary` | `"concise" \| "auto" \| "detailed" \| None` | `None` |
-| `mode` | `"standard" \| "pro" \| None` | `None` |
+| `summary` | `"concise" \| "auto" \| "detailed" \| "omitted" \| "updates" \| None` | `None` |
+| `mode` | `"standard" \| "pro" \| "enabled" \| "adaptive" \| "between_tools" \| "disabled" \| None` | `None` |
+| `budget` | `int \| None` | `None` |
+| `native_options` | `dict \| None` | `None` |
 
 See [Reasoning](reasoning.md).
 
@@ -116,11 +135,12 @@ This is the internal canonical request that `send()` builds and passes to an ada
 | --- | --- |
 | `model` | `str` (without the prefix) |
 | `input` | `list`, already converted to native items |
-| `instructions` | `str \| None` (not yet populated by `send()`; use `request_options={"instructions": ...}`) |
+| `instructions` | `str \| None`, from `send(instructions=...)` |
 | `tools` | `list[FunctionTool] \| None` |
 | `reasoning` | `ReasoningOptions \| None` |
 | `stream` | `bool` |
 | `provider_options` | `dict \| None` |
+| `max_tokens` | `int \| None` |
 
 ---
 
@@ -135,7 +155,7 @@ This is the internal canonical request that `send()` builds and passes to an ada
 | `name` | `str` | required |
 | `description` | `str` | required |
 | `input_schema` | `InputSchema \| None` | `None` |
-| `strict` | `bool \| None` | `None` (the OpenAI adapter treats it as `True`) |
+| `strict` | `bool \| None` | `None` (both adapters treat it as `True`) |
 | `provider_options` | `dict[str, Any]` | `{}` |
 
 ### `InputSchema`
@@ -191,7 +211,7 @@ See [Tool calling](tool-calling.md).
 | `role` | `"system"` | `"system"` |
 | `content` | `str \| list[dict]` | required |
 
-Use `SystemPrompt(content="...")` in an input list to provide system instructions. It is mapped to an OpenAI input message with the `system` role.
+Use `SystemPrompt(content="...")` in an input list to provide system instructions. It is mapped to an OpenAI input message with the `system` role, and moved to Anthropic's top-level `system` parameter.
 
 ### `FunctionToolResult`
 
@@ -200,7 +220,8 @@ Use `SystemPrompt(content="...")` in an input list to provide system instruction
 | `type` | `"function_tool_result"` | `"function_tool_result"` |
 | `call_id` | `str` | required |
 | `result` | `Any` | required. Strings are sent as-is, and other values are JSON-encoded. |
-| `is_error` | `bool` | `False`. When `True`, OpenAI receives `{"error": result}`. |
+| `is_error` | `bool` | `False`. When `True`, OpenAI receives `{"error": result}`, and Anthropic receives `"is_error": true`. |
+| `provider_options` | `dict[str, Any]` | `{}`. Extra native fields merged into the result block, such as Anthropic `cache_control`. |
 
 ---
 
@@ -208,7 +229,7 @@ Use `SystemPrompt(content="...")` in an input list to provide system instruction
 
 ### `Response`
 
-`tessaract.types.response.Response` (a dataclass). The OpenAI adapter returns the subclass `OpenAIResponse`.
+`tessaract.types.response.Response` (a dataclass). The OpenAI adapter returns the subclass `OpenAIResponse`, and the Anthropic adapter returns `AnthropicResponse`.
 
 | Field / property | Type | Description |
 | --- | --- | --- |
@@ -226,6 +247,12 @@ Use `SystemPrompt(content="...")` in an input list to provide system instruction
 `Usage` includes `input_tokens`, `output_tokens`, `total_tokens`, `cached_input_tokens`, `cache_write_input_tokens`, and `reasoning_tokens`. The detail fields are `None` when the provider does not report them. `OpenAIResponse.provider_usage` holds the native OpenAI SDK usage object, or `None` when usage is unavailable. Completed streaming responses expose both fields through `ResponseCompletedEvent.response`.
 
 `OpenAIResponse.input_tokens` and `OpenAIResponse.cached_input_tokens` provide direct access to the corresponding normalized usage counts. Each returns `None` when usage is unavailable; `cached_input_tokens` is also `None` when the provider does not report that detail.
+
+`AnthropicResponse` has `stop_reason` (a `StopReason`, or the raw string for a stop reason Tessaract doesn't know yet) instead of `status`, and `provider_usage` holds the native Anthropic `Usage`. Its normalized `input_tokens` includes cache reads and cache writes, so it means the same as OpenAI's; `provider_usage.input_tokens` is Anthropic's uncached count.
+
+### `StopReason`
+
+A `str` enum with the values `end_turn`, `max_tokens`, `stop_sequence`, `tool_use`, `pause_turn`, `compaction`, `refusal` and `model_context_window_exceeded`.
 
 ### `ResponseStatus`
 
@@ -253,6 +280,8 @@ A `str` enum with the values `queued`, `in_progress`, `completed`, `incomplete`,
 | `ProviderOutputItem` | `"provider_output"` | `provider_type` (the native item type), `raw` |
 
 The OpenAI adapter returns an assistant message as a `ProviderOutputItem` (`provider_type="message"`) when it contains anything other than plain `output_text`, such as refusals or annotations and citations. It still replays correctly, and you can inspect it through `.raw`.
+
+The Anthropic adapter returns neighbouring text blocks as one `AssistantMessage` whose `raw` is the list of native text blocks. Thinking blocks become `ReasoningOutputItem`s with `id=None`, and `redacted_thinking`, server tool blocks and any other block types become `ProviderOutputItem`s. Unknown OpenAI output item types are also returned as `ProviderOutputItem`s.
 
 `OutputType` is the union of all of these.
 

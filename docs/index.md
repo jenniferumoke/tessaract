@@ -4,7 +4,7 @@
 
 Tessaract is a Python SDK for building AI agents across providers. It provides common types for requests, responses, tools, reasoning, and streaming, while provider adapters handle each vendor's API.
 
-OpenAI's Responses API is supported today. Other provider adapters are planned.
+OpenAI's Responses API and Anthropic's Messages API are supported today. Other provider adapters are planned.
 
 ## Start here
 

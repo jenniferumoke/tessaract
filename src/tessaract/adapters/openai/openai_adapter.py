@@ -1,5 +1,6 @@
 import json
 from collections.abc import Iterator, Sequence
+from typing import cast
 
 from openai import Omit
 from openai.types.shared_params import Reasoning as OpenAIReasoningParams
@@ -60,9 +61,6 @@ class OpenAIAdapter(Adapter):
         if reasoning is None:
             return Omit()
 
-        if reasoning.native_options is not None:
-            pass
-
         if reasoning.budget is not None:
             raise ValueError("Not a valid reasoning configuration option for OpenAI. Remove it.") 
 
@@ -97,7 +95,8 @@ class OpenAIAdapter(Adapter):
                 "xhigh" if reasoning.effort == "extra_high" else reasoning.effort
             )
 
-        return native_reasoning
+        # native_options add native reasoning fields; the typed fields win
+        return cast(OpenAIReasoningParams, {**(reasoning.native_options or {}), **native_reasoning})
 
     def _native_property(self, prop: Property) -> dict:
         native: dict[str, object] = {"type": prop.type}
@@ -185,7 +184,15 @@ class OpenAIAdapter(Adapter):
         else:
             output = json.dumps(item.result, default=str)
 
+        canonical_keys = {"type", "call_id", "output"}
+        extra_fields = {
+            key: value
+            for key, value in item.provider_options.items()
+            if key not in canonical_keys
+        }
+
         return {
+            **extra_fields,
             "type": "function_call_output",
             "call_id": item.call_id,
             "output": output
@@ -247,7 +254,7 @@ class OpenAIAdapter(Adapter):
                 )
 
             case _:
-                raise ValueError(f"Unsupported OpenAI output item type: {output_item.type!r}")
+                return ProviderOutputItem(raw=output_item, provider_type=output_item.type)
 
 
     def _normalize_output(self, output_items) -> list[OutputType]:
@@ -374,6 +381,12 @@ class OpenAIAdapter(Adapter):
             "tools": self.map_function_schema(request.tools or []),
             "reasoning": self.map_reasoning_params(request.reasoning), 
         }
+
+        if request.max_tokens is not None:
+            canonical_params["max_output_tokens"] = request.max_tokens
+
+        if request.instructions is not None:
+            canonical_params["instructions"] = request.instructions
 
         provider_options = dict(**request.provider_options or {})
 

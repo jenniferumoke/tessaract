@@ -4,12 +4,12 @@ A provider-agnostic SDK for building AI agents natively.
 
 Tessaract exists to make it straightforward to build agents that work across multiple providers. It is an unopinionated portal to multi-model intelligence giving you model diversity and full control over how you compose models in your applications. 
 
-Today, Tessaract supports OpenAI's Responses API, including streaming, reasoning, and tool calling. More provider adapters are planned.
+Today, Tessaract supports OpenAI's Responses API and Anthropic's Messages API, including streaming, reasoning, and tool calling. More provider adapters are planned.
 
 More concretely, Tessaract exposes a **canonical model of the LLM ecosystem**: requests, responses, content, streaming events, tools, usage, errors and reasoning. You write an agent loop once against Tessaract's types, and a provider **adapter** translates to and from each vendor's native API.
 
 
-> **Status:** OpenAI is the only supported provider today. Anthropic support is in progress.
+> **Status:** OpenAI and Anthropic are supported today. The same agent code runs on both; switch providers by changing the model prefix.
 
 ---
 
@@ -75,7 +75,7 @@ response = client.send(model="oai/gpt-6-luna", input="Say hello in five words.")
 print(response.output_text)
 ```
 
-`OpenAIProvider` reads `OPENAI_API_KEY` from the environment. The `oai` prefix is your choice; Tessaract sends the model name after `/` to OpenAI. For multi-turn conversations, try the [simple chat loop](https://tessaractai.com/getting-started/#a-simple-chat-loop).
+`OpenAIProvider` reads `OPENAI_API_KEY` from the environment. The `oai` prefix is your choice; Tessaract sends the model name after `/` to OpenAI. For Anthropic, install the `anthropic` extra, register `AnthropicProvider()` (it reads `ANTHROPIC_API_KEY`) under a prefix such as `ant`, and send to `ant/claude-opus-5-5`. For multi-turn conversations, try the [simple chat loop](https://tessaractai.com/getting-started/#a-simple-chat-loop).
 
 ---
 
@@ -148,7 +148,7 @@ def run_agent(history: list, user_text: str) -> str:
             input=history,
             tools=tools,
             reasoning=ReasoningOptions(effort="medium", summary="auto"),
-            request_options={"instructions": "You are a concise, helpful assistant."},
+            instructions="You are a concise, helpful assistant.",
         )
 
         # Keep reasoning, messages and calls in the history for the next turn
@@ -228,10 +228,12 @@ src/tessaract/
 ├── client.py                    # Tessaract client: routes requests to adapters
 ├── providers/
 │   ├── provider.py              # Provider base dataclass
-│   └── openai_provider.py       # OpenAIProvider (wraps openai.OpenAI)
+│   ├── openai_provider.py       # OpenAIProvider (wraps openai.OpenAI)
+│   └── anthropic_provider.py    # AnthropicProvider (wraps anthropic.Anthropic)
 ├── adapters/
 │   ├── adapter.py               # Adapter base class + protocols
-│   └── openai/openai_adapter.py # Canonical <-> OpenAI Responses API translation
+│   ├── openai/openai_adapter.py # Canonical <-> OpenAI Responses API translation
+│   └── anthropic/anthropic_adapter.py # Canonical <-> Anthropic Messages API translation
 ├── tools/function.py            # FunctionTool, InputSchema, Property
 └── types/
     ├── input_types.py           # UserMessage, FunctionToolResult
@@ -254,9 +256,17 @@ src/tessaract/
 - Pass-through request options
 - Token usage on `Response`, including OpenAI usage details
 
+**Working today (Anthropic):**
+
+- Synchronous and streaming requests via the Messages API
+- Multi-turn conversations, with automatic grouping into user/assistant turns
+- Function tools with parallel calls, and native tool-result error flags
+- Adaptive, budgeted and between-tools thinking, effort, and thinking display (including beta `updates`)
+- System prompts via `instructions=` or `SystemPrompt`, and prompt caching through `cache_control` pass-through
+- Token usage on `Response`, normalized so `input_tokens` includes cached tokens
+
 **Planned:**
 
-- Anthropic provider and adapter
 - Google GenAI provider and adapter
 - Finish details on `Response`
 - TestProvider for CI and testing without making live API calls
