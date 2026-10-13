@@ -8,6 +8,12 @@ OpenAI's Responses API and Anthropic's Messages API are supported today. Other p
 
 ## Quickstart
 
+Install Tessaract with the extra for each provider you use:
+
+```bash
+pip install "tessaract[openai,anthropic]"
+```
+
 Set the API key for each provider you use:
 
 ```bash
