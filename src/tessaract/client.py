@@ -95,7 +95,7 @@ class Tessaract:
     def send(
             self, model: str, 
             input: Input,
-            stream: Literal[False],
+            stream: Literal[False] = False,
             reasoning: ReasoningOptions | None = None,
             tools: list[FunctionTool] | None = None,
             request_options: dict[str, Any] | None = None,
@@ -103,18 +103,6 @@ class Tessaract:
             instructions: str | None = None
             ) -> Response: ...
 
-
-    @overload
-    def send(
-            self, model: str, 
-            input: Input,
-            stream: Literal[False],
-            max_tokens: int,
-            reasoning: ReasoningOptions | None = None,
-            tools: list[FunctionTool] | None = None,
-            request_options: dict[str, Any] | None = None,
-            instructions: str | None = None
-            ) -> Response: ...
 
     @overload
     def send(

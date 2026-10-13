@@ -95,7 +95,7 @@ class Response:
 
 @dataclass
 class OpenAIResponse(Response):
-    provider: Literal["openai"] = "openai"
+    provider: Literal["openai"] = "openai"  # pyright: ignore[reportIncompatibleVariableOverride]
     provider_usage: ResponseUsage | None = field(default=None, repr=False)
     status: ResponseStatus = field(kw_only=True)
 
@@ -109,7 +109,7 @@ class OpenAIResponse(Response):
 
 @dataclass
 class AnthropicResponse(Response):
-    provider: Literal["anthropic"] = "anthropic"
+    provider: Literal["anthropic"] = "anthropic"  # pyright: ignore[reportIncompatibleVariableOverride]
     # a StopReason, or the raw string for stop reasons Tessaract doesn't know yet
     stop_reason: StopReason | str | None = field(kw_only=True)
 

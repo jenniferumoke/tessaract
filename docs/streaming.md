@@ -24,7 +24,7 @@ Every event has a `type` string that you can branch on, and a `raw_event` field 
 | `output_item.done` | `OutputItemCompletedEvent` | An output item is complete | `item` (a fully typed [output item](api-reference.md#output-items)) |
 | `response.completed` | `ResponseCompletedEvent` | The response is finished | `response` (a full `Response`) |
 | `response.failed` | `ResponseFailedEvent` | The response failed, or the provider sent an error event | `message`, `error` (`ResponseError` with `message` and `code`), `response` (when available) |
-| *(native type)* | `CustomProviderEvent` | Any provider event without a canonical equivalent, e.g. `response.in_progress` or `response.output_text.done` | `type` (the native event name), `raw_event` |
+| `custom_provider_event` | `CustomProviderEvent` | Any provider event without a canonical equivalent, e.g. `response.in_progress` or `response.output_text.done` | `provider_type` (the native event name), `raw_event` |
 
 > A stream ends with either `response.completed` or `response.failed`. Transport and HTTP errors before the stream starts are still raised as SDK exceptions, so wrap the loop in `try`/`except openai.APIError` (or `anthropic.APIError`) if you need to handle them.
 
@@ -113,4 +113,11 @@ The complete runnable version is [`examples/streaming_agent.py`](https://github.
 
 - The stream is a generator backed by the OpenAI SDK's `responses.stream(...)` or the Anthropic SDK's `messages.stream(...)` context manager. The HTTP connection closes when you finish iterating, or when the generator is garbage-collected if you `break` early.
 - Consume the whole stream before you use `completed`. If you stop early, you don't get a `response.completed` event.
-- `CustomProviderEvent` passes through every native event that Tessaract doesn't model. Ignore it, or check `event.type` / `event.raw_event` for provider-specific handling.
+- `CustomProviderEvent` passes through every native event that Tessaract doesn't model. Ignore it, or check `event.provider_type` / `event.raw_event` for provider-specific handling:
+
+  ```python
+  if event.type == "custom_provider_event" and event.provider_type == "response.in_progress":
+      ...
+  ```
+
+- Every event's `type` is a literal, so checking `event.type` (with `if` or `match`) narrows the event to its class in Pylance, Pyright and mypy. After `if event.type == "text.delta":`, `event.delta` type-checks without a cast.

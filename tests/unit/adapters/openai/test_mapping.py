@@ -132,3 +132,13 @@ def test_unknown_output_items_pass_through(openai_adapter):
     assert isinstance(result, ProviderOutputItem)
     assert result.provider_type == "web_search_call"
     assert result.raw is item
+
+def test_unknown_stream_events_keep_their_native_name_in_provider_type(openai_adapter):
+    from types import SimpleNamespace
+
+    event = SimpleNamespace(type="response.in_progress")
+    [normalized] = openai_adapter._normalize_stream_event(event)
+
+    assert normalized.type == "custom_provider_event"
+    assert normalized.provider_type == "response.in_progress"
+    assert normalized.raw_event is event
