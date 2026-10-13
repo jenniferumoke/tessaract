@@ -6,6 +6,29 @@ Tessaract is a Python SDK for building AI agents across providers. It provides c
 
 OpenAI's Responses API and Anthropic's Messages API are supported today. Other provider adapters are planned.
 
+## Quickstart
+
+Set the API key for each provider you use:
+
+```bash
+export OPENAI_API_KEY="your-openai-key"
+export ANTHROPIC_API_KEY="your-anthropic-key"
+```
+
+Then send your first request:
+
+```python
+from tessaract import AnthropicProvider, OpenAIProvider, Tessaract
+
+client = Tessaract(providers={"oai": OpenAIProvider(), "ant": AnthropicProvider()})
+
+response = client.send(model="oai/gpt-6-luna", input="Say hello in five words.")
+print(response.output_text)
+
+response = client.send(model="ant/claude-opus-5-5", input="Say hello in five words.")
+print(response.output_text)
+```
+
 ## Start here
 
 1. [Install Tessaract and send your first request](getting-started.md).
