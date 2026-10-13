@@ -1,6 +1,6 @@
 [project]
 name = "tessaract"
-version = "1.2.0"
+version = "0.2.0"
 description = "Provider-agnostic SDK for building AI agents natively"
 readme = "README.md"
 requires-python = ">=3.11"
