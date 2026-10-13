@@ -26,7 +26,14 @@ from ...types.output_types import (
     TextOutputItem,
 )
 from ...types.request import Request
-from ...types.response import AnthropicResponse, StopReason, ResponseError, Usage
+from ...types.response import (
+    AnthropicResponse,
+    IncompleteReason,
+    ResponseError,
+    ResponseStatus,
+    StopReason,
+    Usage,
+)
 from ...types.streaming.event_types import (
     CustomProviderEvent,
     FunctionCallArgumentDeltaEvent,
@@ -504,11 +511,39 @@ class AnthropicAdapter(Adapter):
         except ValueError:
             return reason
 
+    def _normalize_status(
+        self, stop_reason: StopReason | str | None
+    ) -> tuple[ResponseStatus | None, IncompleteReason | None]:
+        '''Maps a stop reason to the canonical status and, for incomplete responses, the reason.
+
+            Anthropic has no response status; stop_reason says how the turn ended. A stop reason
+            Tessaract doesn't know yet gives no status.
+        '''
+        match stop_reason:
+            case StopReason.END_TURN | StopReason.STOP_SEQUENCE | StopReason.TOOL_USE:
+                return ResponseStatus.COMPLETED, None
+            case StopReason.MAX_TOKENS:
+                return ResponseStatus.INCOMPLETE, IncompleteReason.MAX_TOKENS
+            case StopReason.MODEL_CONTEXT_WINDOW_EXCEEDED:
+                return ResponseStatus.INCOMPLETE, IncompleteReason.CONTEXT_WINDOW
+            case StopReason.REFUSAL:
+                return ResponseStatus.INCOMPLETE, IncompleteReason.CONTENT_FILTER
+            # the turn isn't finished: send the output back to let the model continue
+            case StopReason.PAUSE_TURN | StopReason.COMPACTION:
+                return ResponseStatus.INCOMPLETE, IncompleteReason.PAUSED
+            case _:
+                return None, None
+
     def _normalize_response(self, raw_response) -> AnthropicResponse:
+        stop_reason = self._normalize_stop_reason(raw_response.stop_reason)
+        status, incomplete_reason = self._normalize_status(stop_reason)
+
         return AnthropicResponse(
             id=raw_response.id,
             model=raw_response.model,
-            stop_reason=self._normalize_stop_reason(raw_response.stop_reason),
+            status=status,
+            incomplete_reason=incomplete_reason,
+            stop_reason=stop_reason,
             output=self._normalize_output(raw_response.content),
             usage=self._normalize_usage(raw_response.usage),
             provider_usage=raw_response.usage,

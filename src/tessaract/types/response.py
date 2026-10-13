@@ -39,6 +39,13 @@ class StopReason(str, Enum):
     REFUSAL = "refusal"
     MODEL_CONTEXT_WINDOW_EXCEEDED = "model_context_window_exceeded"
 
+class IncompleteReason(str, Enum):
+    '''Why a response stopped before the model finished its turn (status is "incomplete").'''
+    MAX_TOKENS = "max_tokens"
+    CONTEXT_WINDOW = "context_window"
+    CONTENT_FILTER = "content_filter"
+    PAUSED = "paused"
+
 @dataclass
 class Usage:
     input_tokens: int
@@ -56,6 +63,11 @@ class Response:
     id: str
     model: str
     provider: Literal["anthropic", "openai"] | None = None
+
+    # keyword-only so the positional order of the other fields is unchanged
+    status: ResponseStatus | None = field(default=None, kw_only=True)
+    # set only when status is incomplete
+    incomplete_reason: IncompleteReason | None = field(default=None, kw_only=True)
 
     output: list[OutputType] = field(
         default_factory=list,
@@ -97,7 +109,6 @@ class Response:
 class OpenAIResponse(Response):
     provider: Literal["openai"] = "openai"  # pyright: ignore[reportIncompatibleVariableOverride]
     provider_usage: ResponseUsage | None = field(default=None, repr=False)
-    status: ResponseStatus = field(kw_only=True)
 
     @property
     def input_tokens(self) -> int | None:
