@@ -162,7 +162,7 @@ client.send(model="ant/claude-opus-5-5", input="Tell me about the sea.", instruc
 
 On OpenAI it's the native `instructions` parameter, so it applies to this request only and isn't carried forward with `previous_response_id`. `request_options={"instructions": ...}` still works on OpenAI. If you set both, `instructions=` wins. Anthropic has no native `instructions` option, so `request_options={"instructions": ...}` raises a `ValueError` on Anthropic that points to `instructions=`. On Anthropic, `instructions=` isn't stored anywhere, so pass it on every request.
 
-You can also put `SystemPrompt` items in `input`. On OpenAI they're system messages in the conversation; on Anthropic they're moved to the top-level `system` parameter after `instructions`. Use `SystemPrompt` with a list of content blocks when you need Anthropic `cache_control` on the system prompt.
+You can also put `SystemPrompt` items in `input`. On OpenAI they're system messages in the conversation; on Anthropic they're moved to the top-level `system` parameter after `instructions`. Set `cache=True` on a `SystemPrompt` to cache the prompt up to the end of it; see [Prompt caching](#prompt-caching).
 
 ### `request_options`: native pass-through
 
@@ -194,47 +194,71 @@ Canonical parameters (`model`, `input`, `tools`, `reasoning`, `max_tokens`, `ins
 
 ### Prompt caching
 
-Pass `CacheOptions` to `send()` to configure prompt caching the same way on both providers:
+Both providers cache a prompt prefix up to a *breakpoint*, so a later request that starts with the same bytes reads it from the cache instead of processing it again. Tessaract configures this in two places: `cache=CacheOptions(...)` on `send()` for the request, and `cache=True` on an input item or tool to put a breakpoint at the end of it.
 
 ```python
-from tessaract import CacheOptions
+from tessaract import CacheOptions, SystemPrompt
 
 client.send(
-    model="ant/claude-opus-5-5",
-    input="Tell me about the sea.",
-    instructions=LONG_INSTRUCTIONS,
-    cache=CacheOptions(retention="long", key="sea-facts"),
+    model=MODEL,  # "oai/gpt-5.6-luna" or "ant/claude-opus-5-5"
+    input=[SystemPrompt(content=LONG_DOCS, cache=True), "Summarise section 3."],
+    cache=CacheOptions(mode="implicit"),
 )
 ```
 
+#### `CacheOptions`
+
 | Field | OpenAI | Anthropic |
 | --- | --- | --- |
-| *(any `CacheOptions`)* | Nothing extra; OpenAI caches automatically | Top-level `cache_control`, which turns on automatic caching |
-| `retention="short"` / `"long"` | Ignored | `ttl="5m"` / `"1h"` |
+| *(no `CacheOptions`)* | Caching stays on: OpenAI caches automatically (on `gpt-5.6`+, with one automatic breakpoint) | No automatic breakpoint; only `cache=True` breakpoints are cached |
+| *(any `CacheOptions`)* | Nothing extra | Top-level `cache_control`, which places one automatic breakpoint on the last cacheable block |
+| `mode="implicit"` | `prompt_cache_options={"mode": "implicit"}` | Same as passing any `CacheOptions` |
+| `mode="explicit"` | `prompt_cache_options={"mode": "explicit"}`: no automatic breakpoint | No top-level `cache_control` |
+| `retention="short"` / `"long"` | Ignored | `ttl="5m"` / `"1h"` on the automatic breakpoint and on every breakpoint without its own `ttl` |
 | `key` | `prompt_cache_key` | Ignored |
 
-Typed values take precedence over the same keys in `request_options`.
+The defaults differ when you pass nothing: OpenAI caches automatically, Anthropic doesn't. Pass `CacheOptions()` to get automatic caching on both.
 
-OpenAI's cache lifetime controls depend on the model: `prompt_cache_retention` is deprecated, `gpt-5.5` rejects `"in_memory"`, and `gpt-5.6` and later use `prompt_cache_options`, whose `ttl` currently accepts only its default `"30m"`. Since no single value works across models, `retention` is not sent to OpenAI. To set these fields for a specific model, pass them in `request_options`.
+`"implicit"` suits agents and chats, where each request extends the previous one: the automatic breakpoint follows the end of the conversation, so the whole history is read from the cache on the next turn. `"explicit"` suits requests that share one large prefix and end in one-off content, such as many questions about the same document. There an automatic breakpoint would write the one-off ending to the cache on every request (Anthropic bills cache writes above the normal input price) without it ever being read back. With `"explicit"` and no `cache=True` breakpoints, the request isn't cached at all.
 
-### Prompt caching on Anthropic
+Typed values take precedence over the same keys in `request_options`. On OpenAI, other `prompt_cache_options` fields you pass in `request_options`, such as `ttl`, are kept.
 
-Anthropic caches a prompt prefix up to each `cache_control` breakpoint. With `CacheOptions`, Anthropic places one breakpoint automatically. To choose where breakpoints go, Tessaract also passes `cache_control` through wherever Anthropic accepts it:
+`prompt_cache_options` is only sent when `mode` is set, because OpenAI accepts it on `gpt-5.6` and later only. OpenAI's cache lifetime controls also depend on the model: `prompt_cache_retention` is deprecated, `gpt-5.5` rejects `"in_memory"`, and `prompt_cache_options.ttl` currently accepts only its default `"30m"`. Since no single value works across models, `retention` is not sent to OpenAI; pass model-specific fields in `request_options`.
+
+On Anthropic, entries with a longer TTL must come before entries with a shorter one. That's why `retention` also applies to breakpoints without their own `ttl`: a 5-minute breakpoint on the system prompt followed by a 1-hour automatic breakpoint would be rejected.
+
+#### Breakpoints: `cache=True`
+
+`cache=True` marks the end of an item as a breakpoint:
 
 ```python
-from tessaract import FunctionTool, FunctionToolResult, SystemPrompt
+from tessaract import FunctionTool, FunctionToolResult, SystemPrompt, UserMessage
 
-# a system prompt, as a list of content blocks
-SystemPrompt(content=[{"type": "text", "text": LONG_INSTRUCTIONS, "cache_control": {"type": "ephemeral"}}])
-
-# a tool definition
-FunctionTool(name="search", description="...", provider_options={"cache_control": {"type": "ephemeral"}})
-
-# a tool result
-FunctionToolResult(call_id=call.call_id, result=output, provider_options={"cache_control": {"type": "ephemeral"}})
+SystemPrompt(content=LONG_INSTRUCTIONS, cache=True)
+UserMessage(content=LONG_DOCUMENT, cache=True)
+FunctionToolResult(call_id=call.call_id, result=output, cache=True)
+FunctionTool(name="search", description="...", cache=True)  # Anthropic only
 ```
 
-`UserMessage` also accepts a list of native content blocks, so you can set `cache_control` on a block there too. Cache reads and writes are reported in `response.usage.cached_input_tokens` and `response.usage.cache_write_input_tokens`.
+| Item | OpenAI | Anthropic |
+| --- | --- | --- |
+| `SystemPrompt`, `UserMessage` | `prompt_cache_breakpoint` on the last content part; string content becomes one `input_text` part | `cache_control` on the last content block; string content becomes one `text` block |
+| `FunctionToolResult` | `prompt_cache_breakpoint` on the last output part; string or JSON output becomes one `input_text` part | `cache_control` on the `tool_result` block |
+| `FunctionTool` | Ignored. OpenAI has no breakpoints on tool definitions; tools come before the input, so any later breakpoint covers them | `cache_control` on the tool definition. Put it on the last tool to cache all of them |
+
+A breakpoint that's already in the native content (`cache_control` or `prompt_cache_breakpoint`) is kept as it is. Each provider writes at most four breakpoints per request, and on both the automatic breakpoint counts as one of the four. OpenAI documents breakpoints alongside `prompt_cache_options`, so expect them to need `gpt-5.6` or later too.
+
+Prefixes shorter than the provider's minimum aren't cached, and there is no error. Cache reads and writes are reported in `response.usage.cached_input_tokens` and `response.usage.cache_write_input_tokens`.
+
+#### Native breakpoints
+
+You can still write breakpoints in each provider's own format, for example to give one breakpoint its own Anthropic `ttl`:
+
+```python
+SystemPrompt(content=[{"type": "text", "text": LONG_INSTRUCTIONS, "cache_control": {"type": "ephemeral", "ttl": "1h"}}])
+FunctionTool(name="search", description="...", provider_options={"cache_control": {"type": "ephemeral"}})
+FunctionToolResult(call_id=call.call_id, result=output, provider_options={"cache_control": {"type": "ephemeral"}})
+```
 
 ## Multi-turn conversations
 

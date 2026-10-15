@@ -58,8 +58,17 @@ class OpenAIAdapter(Adapter):
     def map_input_message(self, item: UserMessageProtocol | SystemPromptProtocol):
         return {
             "role": item.role,
-            "content": item.content
+            "content": self._mark_last_part(item.content) if item.cache else item.content
         }
+
+    def _mark_last_part(self, content) -> list:
+        '''Adds an explicit prompt_cache_breakpoint to the last content part. One it already has is kept.'''
+        parts = [{"type": "input_text", "text": content}] if isinstance(content, str) else list(content)
+
+        if not parts or "prompt_cache_breakpoint" in parts[-1]:
+            return parts
+
+        return [*parts[:-1], {**parts[-1], "prompt_cache_breakpoint": {"mode": "explicit"}}]
 
     def map_assistant_message(self, item: AssistantMessageProtocol):
         return item.raw
@@ -106,16 +115,25 @@ class OpenAIAdapter(Adapter):
         return cast(OpenAIReasoningParams, {**(reasoning.native_options or {}), **native_reasoning})
 
     def map_cache_params(self, cache: CacheParamsProtocol | None) -> dict[str, Any]:
-        '''Maps CacheOptions.key to prompt_cache_key. OpenAI caches automatically.
+        '''Maps CacheOptions.mode to prompt_cache_options.mode and key to prompt_cache_key.
 
-            CacheOptions.retention is ignored. prompt_cache_retention is deprecated, gpt-5.5 rejects
+            prompt_cache_options is only sent when mode is set, since only gpt-5.6 and later accept it.
+            CacheOptions.retention is ignored: prompt_cache_retention is deprecated, gpt-5.5 rejects
             in_memory, and gpt-5.6's prompt_cache_options.ttl accepts only its default, so no value
             maps safely across current models. Use request_options for model-specific cache fields.
         '''
-        if cache is None or cache.key is None:
+        if cache is None:
             return {}
 
-        return {"prompt_cache_key": cache.key}
+        native_cache: dict[str, Any] = {}
+
+        if cache.mode is not None:
+            native_cache["prompt_cache_options"] = {"mode": cache.mode}
+
+        if cache.key is not None:
+            native_cache["prompt_cache_key"] = cache.key
+
+        return native_cache
 
     def _native_property(self, prop: Property) -> dict:
         native: dict[str, object] = {"type": prop.type}
@@ -202,6 +220,9 @@ class OpenAIAdapter(Adapter):
 
         else:
             output = json.dumps(item.result, default=str)
+
+        if item.cache:
+            output = self._mark_last_part(output)
 
         canonical_keys = {"type", "call_id", "output"}
         extra_fields = {
@@ -424,9 +445,18 @@ class OpenAIAdapter(Adapter):
         if request.instructions is not None:
             canonical_params["instructions"] = request.instructions
 
-        canonical_params.update(self.map_cache_params(request.cache))
-
         provider_options = dict(**request.provider_options or {})
+
+        cache_params = self.map_cache_params(request.cache)
+
+        if "prompt_cache_options" in cache_params:
+            # keep other native prompt_cache_options fields, such as ttl; the typed mode wins
+            cache_params["prompt_cache_options"] = {
+                **(provider_options.get("prompt_cache_options") or {}),
+                **cache_params["prompt_cache_options"],
+            }
+
+        canonical_params.update(cache_params)
 
         extra_body = provider_options.get("extra_body")
 

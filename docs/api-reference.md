@@ -138,10 +138,11 @@ See [Reasoning](reasoning.md).
 
 | Field | Type | Default | OpenAI | Anthropic |
 | --- | --- | --- | --- | --- |
-| `retention` | `"short" \| "long" \| None` | `None` | Ignored | `cache_control.ttl`: `"5m"` / `"1h"` |
+| `mode` | `"implicit" \| "explicit" \| None` | `None` | `prompt_cache_options.mode` (`gpt-5.6`+) | `"explicit"` leaves out the top-level `cache_control` |
+| `retention` | `"short" \| "long" \| None` | `None` | Ignored | `ttl`: `"5m"` / `"1h"`, on the automatic breakpoint and on breakpoints without their own `ttl` |
 | `key` | `str \| None` | `None` | `prompt_cache_key` | Ignored |
 
-On Anthropic, passing any `CacheOptions` sends a top-level `cache_control`, which turns on automatic caching. OpenAI caches automatically, so only `key` is sent there; OpenAI's lifetime fields differ by model, so set them in `request_options` if you need them. Fields left as `None` are not sent. The typed values take precedence over the same keys in `request_options`. See [Prompt caching](getting-started.md#prompt-caching).
+On Anthropic, passing any `CacheOptions` except `mode="explicit"` sends a top-level `cache_control`, which turns on automatic caching. OpenAI caches automatically, so only `mode` and `key` are sent there; OpenAI's lifetime fields differ by model, so set them in `request_options` if you need them. Fields left as `None` are not sent. The typed values take precedence over the same keys in `request_options`. See [Prompt caching](getting-started.md#prompt-caching).
 
 ### `Request`
 
@@ -175,6 +176,7 @@ This is the internal canonical request that `send()` builds and passes to an ada
 | `description` | `str` | required |
 | `input_schema` | `InputSchema \| None` | `None` |
 | `strict` | `bool \| None` | `None` (both adapters treat it as `True`) |
+| `cache` | `bool` | `False`. Anthropic: `cache_control` on the tool definition. Ignored on OpenAI. |
 | `provider_options` | `dict[str, Any]` | `{}` |
 
 ### `InputSchema`
@@ -220,6 +222,7 @@ See [Tool calling](tool-calling.md).
 | --- | --- | --- |
 | `role` | `"user"` | `"user"` |
 | `content` | `str \| list[dict]` | required |
+| `cache` | `bool` | `False`. Puts a cache breakpoint on the last content part. |
 
 `content` can be a list of native content parts, such as OpenAI `input_text` / `input_image` dicts, for multimodal input.
 
@@ -229,6 +232,7 @@ See [Tool calling](tool-calling.md).
 | --- | --- | --- |
 | `role` | `"system"` | `"system"` |
 | `content` | `str \| list[dict]` | required |
+| `cache` | `bool` | `False`. Puts a cache breakpoint on the last content part. |
 
 Use `SystemPrompt(content="...")` in an input list to provide system instructions. It is mapped to an OpenAI input message with the `system` role, and moved to Anthropic's top-level `system` parameter.
 
@@ -240,6 +244,7 @@ Use `SystemPrompt(content="...")` in an input list to provide system instruction
 | `call_id` | `str` | required |
 | `result` | `Any` | required. Strings are sent as-is, and other values are JSON-encoded. |
 | `is_error` | `bool` | `False`. When `True`, OpenAI receives `{"error": result}`, and Anthropic receives `"is_error": true`. |
+| `cache` | `bool` | `False`. Puts a cache breakpoint on the result. |
 | `provider_options` | `dict[str, Any]` | `{}`. Extra native fields merged into the result block, such as Anthropic `cache_control`. |
 
 ---

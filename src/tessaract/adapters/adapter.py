@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 class UserMessageProtocol(Protocol):
     role: Literal["user"] = "user"
     content: str | list[dict]
+    cache: bool = False
 
 class AssistantMessageProtocol(Protocol):
     type: Literal["assistant_message"] = "assistant_message"
@@ -26,12 +27,14 @@ class AssistantMessageProtocol(Protocol):
 class SystemPromptProtocol(Protocol):
     role: Literal["system"] = "system"
     content: str | list[dict]
+    cache: bool = False
 
 class FunctionToolResultProtocol(Protocol):
     type: Literal["function_tool_result"] = "function_tool_result"
     call_id: str
     result: Any
     is_error: bool = False
+    cache: bool = False
     provider_options: dict[str, Any]
 
 class FunctionToolSchemaProtocol(Protocol):
@@ -39,6 +42,7 @@ class FunctionToolSchemaProtocol(Protocol):
     description: str
     input_schema: InputSchema | None
     strict: bool | None = None
+    cache: bool = False
     provider_options: dict[str, Any]
 
 class ReasoningParamsProtocol(Protocol):
@@ -51,6 +55,7 @@ class ReasoningParamsProtocol(Protocol):
     native_options: dict | None = None
 
 class CacheParamsProtocol(Protocol):
+    mode: Literal["implicit", "explicit"] | None = None
     retention: Literal["short", "long"] | None = None
     key: str | None = None
 

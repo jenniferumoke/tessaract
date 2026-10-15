@@ -42,12 +42,18 @@ class CacheOptions:
     '''Canonical prompt caching options, mapped to each provider's native parameters.
 
         Args:
+            mode: "implicit" lets the provider place one automatic breakpoint in addition to any
+                cache=True breakpoints; "explicit" caches only at cache=True breakpoints, and nothing
+                when there are none. Sent to OpenAI as prompt_cache_options.mode (gpt-5.6 and later);
+                on Anthropic, "explicit" leaves out the top-level cache_control. None means "implicit".
             retention: how long cache entries live. Sent to Anthropic as a "5m" ("short") or "1h"
-                ("long") ttl. OpenAI's lifetime fields differ by model, so the OpenAI adapter ignores
-                it. None uses the provider default.
+                ("long") ttl, on the automatic breakpoint and on every breakpoint without its own ttl.
+                OpenAI's lifetime fields differ by model, so the OpenAI adapter ignores it. None uses
+                the provider default.
             key: a cache routing key, sent to OpenAI as prompt_cache_key. Anthropic has no
                 equivalent, so the Anthropic adapter ignores it.
     '''
+    mode: Literal["implicit", "explicit"] | None = None
     retention: Literal["short", "long"] | None = None
     key: str | None = None
 

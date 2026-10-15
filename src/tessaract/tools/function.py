@@ -68,4 +68,5 @@ class FunctionTool(BaseModel):
     description: str
     input_schema: InputSchema | None = None
     strict: bool | None = None
+    cache: bool = False
     provider_options: dict[str, Any] = Field(default_factory=dict)

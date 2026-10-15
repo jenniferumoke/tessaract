@@ -32,6 +32,7 @@ get_weather = FunctionTool(
 | `description` | `str` | required | Tells the model what the tool does and when to use it. |
 | `input_schema` | `InputSchema \| None` | `None` | The arguments. Leave it out for tools that take no arguments. |
 | `strict` | `bool \| None` | `None` | Enforce the schema exactly. Both adapters treat `None` as **`True`**. |
+| `cache` | `bool` | `False` | Anthropic: a prompt-caching breakpoint on the tool definition. Ignored on OpenAI. |
 | `provider_options` | `dict` | `{}` | Extra native fields merged into the provider's tool definition. |
 
 ### `InputSchema`
@@ -147,6 +148,7 @@ response = client.send(model="oai/gpt-5.6-luna", input=history, tools=tools)
 | `call_id` | `str` | required | The `call_id` of the `FunctionCallOutputItem` this result answers |
 | `result` | `Any` | required | The tool's output. |
 | `is_error` | `bool` | `False` | Marks the call as failed. |
+| `cache` | `bool` | `False` | Puts a prompt-caching breakpoint on the result. On OpenAI, the output is sent as an `input_text` part so it can carry the breakpoint. |
 | `provider_options` | `dict` | `{}` | Extra native fields merged into the result, such as Anthropic `cache_control`. They can't override the canonical fields. |
 
 The OpenAI adapter maps it to `{"type": "function_call_output", "call_id": ..., "output": ...}`. The `output` depends on `result` and `is_error`:
@@ -174,14 +176,14 @@ except Exception as exc:
 
 Everything in `provider_options` is merged into the native tool definition, except the canonical keys `type`, `name`, `description` and `strict`, plus `parameters` (OpenAI) or `input_schema` (Anthropic). The canonical fields always control those.
 
-A common Anthropic use is a prompt-caching breakpoint. Put it on the last tool to cache all the tool definitions:
+For an Anthropic prompt-caching breakpoint, use `cache=True` on the last tool to cache all the tool definitions. To set a native field such as a per-breakpoint `ttl`, pass `cache_control` in `provider_options`; it is kept as written:
 
 ```python
 FunctionTool(
     name="get_weather",
     description="Get the current temperature for a city.",
     input_schema=...,
-    provider_options={"cache_control": {"type": "ephemeral"}},
+    provider_options={"cache_control": {"type": "ephemeral", "ttl": "1h"}},
 )
 ```
 
