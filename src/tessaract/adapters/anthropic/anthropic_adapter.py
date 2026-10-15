@@ -7,6 +7,7 @@ from ..adapter import (
     AssistantMessageProtocol,
     FunctionToolResultProtocol,
     FunctionToolSchemaProtocol,
+    CacheParamsProtocol,
     ReasoningParamsProtocol,
     UserMessageProtocol,
     SystemPromptProtocol
@@ -155,6 +156,21 @@ class AnthropicAdapter(Adapter):
                     f"Anthropic does not accept reasoning summary {summary!r}. "
                     'Use "auto", "concise", "detailed", "omitted" or "updates".'
                 )
+
+    def map_cache_params(self, cache: CacheParamsProtocol | None) -> dict[str, Any]:
+        '''Maps CacheOptions to Anthropic's top-level cache_control, which turns on automatic caching.
+
+            CacheOptions.key has no Anthropic equivalent and is ignored.
+        '''
+        if cache is None:
+            return {}
+
+        cache_control: dict[str, Any] = {"type": "ephemeral"}
+
+        if cache.retention is not None:
+            cache_control["ttl"] = "1h" if cache.retention == "long" else "5m"
+
+        return {"cache_control": cache_control}
 
     def map_reasoning_params(
         self,
@@ -369,6 +385,8 @@ class AnthropicAdapter(Adapter):
                 **(provider_options.get("output_config") or {}),
                 **reasoning_params["output_config"],
             }
+
+        canonical_params.update(self.map_cache_params(request.cache))
 
         extra_body = provider_options.get("extra_body")
 

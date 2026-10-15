@@ -262,6 +262,7 @@ src/tessaract/
 - Function tools with parallel calls
 - Reasoning effort and summaries
 - Pass-through request options
+- Prompt caching retention and keys via `CacheOptions`
 - Token usage on `Response`, including OpenAI usage details
 
 **Working today (Anthropic):**
@@ -270,7 +271,7 @@ src/tessaract/
 - Multi-turn conversations, with automatic grouping into user/assistant turns
 - Function tools with parallel calls, and native tool-result error flags
 - Adaptive, budgeted and between-tools thinking, effort, and thinking display (including beta `updates`)
-- System prompts via `instructions=` or `SystemPrompt`, and prompt caching through `cache_control` pass-through
+- System prompts via `instructions=` or `SystemPrompt`, and prompt caching via `CacheOptions` or `cache_control` pass-through
 - Token usage on `Response`, normalized so `input_tokens` includes cached tokens
 
 **Planned:**

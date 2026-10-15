@@ -6,7 +6,7 @@ pytest.importorskip("anthropic")
 
 from anthropic.types import TextBlock, ThinkingBlock, ToolUseBlock
 
-from tessaract import FunctionTool, FunctionToolResult, InputSchema, Property, ReasoningOptions
+from tessaract import CacheOptions, FunctionTool, FunctionToolResult, InputSchema, Property, ReasoningOptions
 from tessaract.adapters.anthropic.anthropic_adapter import (
     DEFAULT_ANTHROPIC_MAX_TOKENS,
     THINKING_BINDING_CONTROLS_BETA,
@@ -331,6 +331,41 @@ def test_canonical_request_params_win_over_provider_options(anthropic_adapter):
     assert kwargs["model"] == "claude-test"
     assert kwargs["temperature"] == 0.2
     assert kwargs["cache_control"] == {"type": "ephemeral"}
+
+
+# --- cache options ------------------------------------------------------------
+
+def test_no_cache_options_sends_no_cache_control(anthropic_adapter):
+    kwargs = anthropic_adapter._build_request_kwargs(Request(model="claude-test", input=[]))
+
+    assert "cache_control" not in kwargs
+
+def test_cache_options_turn_on_automatic_caching(anthropic_adapter):
+    kwargs = anthropic_adapter._build_request_kwargs(
+        Request(model="claude-test", input=[], cache=CacheOptions())
+    )
+
+    assert kwargs["cache_control"] == {"type": "ephemeral"}
+
+@pytest.mark.parametrize(("retention", "ttl"), [("short", "5m"), ("long", "1h")])
+def test_cache_retention_maps_to_ttl(anthropic_adapter, retention, ttl):
+    native = anthropic_adapter.map_cache_params(CacheOptions(retention=retention))
+
+    assert native == {"cache_control": {"type": "ephemeral", "ttl": ttl}}
+
+def test_cache_key_is_ignored(anthropic_adapter):
+    assert anthropic_adapter.map_cache_params(CacheOptions(key="k")) == {"cache_control": {"type": "ephemeral"}}
+
+def test_typed_cache_options_win_over_request_option_cache_control(anthropic_adapter):
+    request = Request(
+        model="claude-test", input=[], cache=CacheOptions(retention="long"),
+        provider_options={"cache_control": {"type": "ephemeral"}, "extra_body": {"cache_control": "x"}},
+    )
+
+    kwargs = anthropic_adapter._build_request_kwargs(request)
+
+    assert kwargs["cache_control"] == {"type": "ephemeral", "ttl": "1h"}
+    assert kwargs["extra_body"] == {}
 
 
 # --- beta routing -------------------------------------------------------------

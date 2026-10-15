@@ -6,7 +6,7 @@ from .providers import AnthropicProvider, OpenAIProvider
 from .tools.function import FunctionTool
 from .types.input_types import InputType, UserMessage
 from .types.output_types import AssistantMessage, OutputItem
-from .types.request import ReasoningOptions, Request
+from .types.request import CacheOptions, ReasoningOptions, Request
 from .types.response import Response
 from .types.streaming.event_types import StreamEventUnion
 
@@ -53,7 +53,8 @@ class Tessaract:
         tools: list[FunctionTool],
         request_options: dict[str, Any],
         stream: bool,
-        instructions: str | None = None
+        instructions: str | None = None,
+        cache: CacheOptions | None = None
     ) -> Request:
 
         all_items = []
@@ -88,7 +89,8 @@ class Tessaract:
             provider_options=request_options,
             stream=stream,
             max_tokens=max_tokens,
-            instructions=instructions
+            instructions=instructions,
+            cache=cache
         )
 
     @overload
@@ -100,7 +102,8 @@ class Tessaract:
             tools: list[FunctionTool] | None = None,
             request_options: dict[str, Any] | None = None,
             max_tokens: int | None = None,
-            instructions: str | None = None
+            instructions: str | None = None,
+            cache: CacheOptions | None = None
             ) -> Response: ...
 
 
@@ -113,7 +116,8 @@ class Tessaract:
             tools: list[FunctionTool] | None = None,
             request_options: dict[str, Any] | None = None,
             max_tokens: int | None = None,
-            instructions: str | None = None
+            instructions: str | None = None,
+            cache: CacheOptions | None = None
             ) -> Iterator[StreamEventUnion]: ...
 
     @overload
@@ -126,7 +130,8 @@ class Tessaract:
         tools: list[FunctionTool] | None = None,
         request_options: dict[str, Any] | None = None,
         max_tokens: int | None = None,
-        instructions: str | None = None
+        instructions: str | None = None,
+        cache: CacheOptions | None = None
     ) -> Response | Iterator[StreamEventUnion]: ...
 
 
@@ -138,7 +143,8 @@ class Tessaract:
             tools: list[FunctionTool] | None = None,
             request_options: dict[str, Any] | None = None,
             max_tokens: int | None = None,
-            instructions: str | None = None
+            instructions: str | None = None,
+            cache: CacheOptions | None = None
         ) -> Response | Iterator[StreamEventUnion]:
         '''Send a request to the provider registered under the model's prefix.
 
@@ -155,6 +161,8 @@ class Tessaract:
                     Anthropic models, since output limits differ between models.
                 instructions: system instructions for this request. Sent to OpenAI as the native
                     instructions parameter, and to Anthropic as the first block of system.
+                cache: canonical prompt caching options. Sent to OpenAI as prompt_cache_retention and
+                    prompt_cache_key, and to Anthropic as top-level cache_control (automatic caching).
         '''
 
         provider, model = self._normalize_model_name(model=model)
@@ -175,7 +183,8 @@ class Tessaract:
             request_options=_request_options,
             stream=stream,
             max_tokens=max_tokens,
-            instructions=instructions
+            instructions=instructions,
+            cache=cache
         )
 
         adapter = self.adapters[provider]

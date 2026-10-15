@@ -38,6 +38,21 @@ class ReasoningOptions:
 
 
 @dataclass
+class CacheOptions:
+    '''Canonical prompt caching options, mapped to each provider's native parameters.
+
+        Args:
+            retention: how long cache entries live. "short" is Anthropic's 5-minute ttl and OpenAI's
+                in_memory retention; "long" is Anthropic's 1-hour ttl and OpenAI's 24h retention.
+                None uses the provider default.
+            key: a cache routing key, sent to OpenAI as prompt_cache_key. Anthropic has no
+                equivalent, so the Anthropic adapter ignores it.
+    '''
+    retention: Literal["short", "long"] | None = None
+    key: str | None = None
+
+
+@dataclass
 class Request:
     '''Request model for generating a response.
         Args:
@@ -46,6 +61,7 @@ class Request:
             input: list[role | content]
             tools: list[FunctionTool] | None = None
             reasoning:  ReasoningOptions | None = None
+            cache: CacheOptions | None = None
             stream: bool = False
             provider_options: dict[str, Any] | None = None
     '''
@@ -54,6 +70,7 @@ class Request:
     instructions: str | None = None
     tools: list[FunctionTool] | None = None
     reasoning:  ReasoningOptions | None = None
+    cache: CacheOptions | None = None
     stream: bool = False
     provider_options: dict[str, Any] | None = None
     max_tokens: int | None = None

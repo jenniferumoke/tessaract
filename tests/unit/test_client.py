@@ -66,6 +66,15 @@ def test_instructions_are_put_on_the_request(client):
 
     assert request.instructions == "Be brief."
 
+def test_cache_options_are_put_on_the_request(client, monkeypatch):
+    from tessaract import CacheOptions
+
+    adapter = client.adapters["oai"]
+    monkeypatch.setattr(adapter, "generate_sync", lambda request: request.cache)
+    cache = CacheOptions(retention="long")
+
+    assert client.send(model="oai/gpt-latest", input="hi", cache=cache) is cache
+
 def test_output_items_are_replayed_through_the_adapter(client, monkeypatch):
     from tessaract.types.output_types import ReasoningOutputItem
 

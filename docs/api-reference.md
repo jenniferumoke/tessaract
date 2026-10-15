@@ -8,7 +8,7 @@ from tessaract import (
     OpenAIProvider, AnthropicProvider,
     FunctionTool, InputSchema, Property,
     UserMessage, SystemPrompt, FunctionToolResult,
-    ReasoningOptions,
+    ReasoningOptions, CacheOptions,
     DEFAULT_ANTHROPIC_MAX_TOKENS,
 )
 ```
@@ -41,6 +41,7 @@ send(
     request_options: dict[str, Any] | None = None,
     max_tokens: int | None = None,
     instructions: str | None = None,
+    cache: CacheOptions | None = None,
 ) -> Response | Iterator[StreamEventUnion]
 ```
 
@@ -54,6 +55,7 @@ send(
 | `request_options` | Native request parameters merged into the provider call. Canonical parameters take precedence. |
 | `max_tokens` | Maximum output tokens. OpenAI: `max_output_tokens`, left out when `None`. Anthropic: `max_tokens`, defaulting to `DEFAULT_ANTHROPIC_MAX_TOKENS` (16,000) when `None`; setting it explicitly is recommended. |
 | `instructions` | System instructions. OpenAI: the native `instructions` parameter. Anthropic: the first `system` block. |
+| `cache` | See [`CacheOptions`](#cacheoptions). |
 
 **Raises:**
 
@@ -130,6 +132,17 @@ This creates an `anthropic.Anthropic` client from the fields that are set, plus 
 
 See [Reasoning](reasoning.md).
 
+### `CacheOptions`
+
+`tessaract.CacheOptions` (a dataclass)
+
+| Field | Type | Default | OpenAI | Anthropic |
+| --- | --- | --- | --- | --- |
+| `retention` | `"short" \| "long" \| None` | `None` | `prompt_cache_retention`: `"in_memory"` / `"24h"` | `cache_control.ttl`: `"5m"` / `"1h"` |
+| `key` | `str \| None` | `None` | `prompt_cache_key` | Ignored |
+
+On Anthropic, passing any `CacheOptions` sends a top-level `cache_control`, which turns on automatic caching. OpenAI caches automatically, so an empty `CacheOptions()` sends nothing there. Fields left as `None` are not sent. The typed values take precedence over the same keys in `request_options`. See [Prompt caching](getting-started.md#prompt-caching).
+
 ### `Request`
 
 `tessaract.types.request.Request` (a dataclass)
@@ -143,6 +156,7 @@ This is the internal canonical request that `send()` builds and passes to an ada
 | `instructions` | `str \| None`, from `send(instructions=...)` |
 | `tools` | `list[FunctionTool] \| None` |
 | `reasoning` | `ReasoningOptions \| None` |
+| `cache` | `CacheOptions \| None` |
 | `stream` | `bool` |
 | `provider_options` | `dict \| None` |
 | `max_tokens` | `int \| None` |

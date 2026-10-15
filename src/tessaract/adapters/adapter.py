@@ -50,6 +50,10 @@ class ReasoningParamsProtocol(Protocol):
     mode: Literal["standard", "pro", "enabled", "between_tools", "adaptive", "disabled"] | None = None
     native_options: dict | None = None
 
+class CacheParamsProtocol(Protocol):
+    retention: Literal["short", "long"] | None = None
+    key: str | None = None
+
 class ReasoningProtocol(Protocol):
     type: Literal["reasoning"] = "reasoning"
     text: str | None = None
@@ -77,6 +81,9 @@ class Adapter:
     def map_reasoning_params(self, reasoning: ReasoningParamsProtocol | None) -> Any:
         raise NotImplementedError("not yet implemented...")
     
+    def map_cache_params(self, cache: CacheParamsProtocol | None) -> dict[str, Any]:
+        raise NotImplementedError("not yet implemented...")
+
     def map_reasoning(self, item: ReasoningProtocol) -> Any:
         raise NotImplementedError("not yet implemented")
 

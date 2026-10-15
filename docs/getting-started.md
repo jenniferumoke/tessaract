@@ -192,9 +192,32 @@ client.send(
 
 Canonical parameters (`model`, `input`, `tools`, `reasoning`, `max_tokens`, `instructions`) always take precedence. If `request_options` contains one of them, the canonical value wins. On Anthropic, `messages`, `system`, `thinking` and `output_config.effort` are canonical too, since the adapter builds them from `input`, `instructions` and `reasoning`. Other `output_config` fields, such as a structured output `format`, are kept. The same rule applies to keys inside `request_options["extra_body"]`.
 
+### Prompt caching
+
+Pass `CacheOptions` to `send()` to configure prompt caching the same way on both providers:
+
+```python
+from tessaract import CacheOptions
+
+client.send(
+    model="ant/claude-opus-5-5",
+    input="Tell me about the sea.",
+    instructions=LONG_INSTRUCTIONS,
+    cache=CacheOptions(retention="long", key="sea-facts"),
+)
+```
+
+| Field | OpenAI | Anthropic |
+| --- | --- | --- |
+| *(any `CacheOptions`)* | Nothing extra; OpenAI caches automatically | Top-level `cache_control`, which turns on automatic caching |
+| `retention="short"` / `"long"` | `prompt_cache_retention="in_memory"` / `"24h"` | `ttl="5m"` / `"1h"` |
+| `key` | `prompt_cache_key` | Ignored |
+
+Typed values take precedence over the same keys in `request_options`.
+
 ### Prompt caching on Anthropic
 
-Anthropic caches a prompt prefix up to each `cache_control` breakpoint. Tessaract passes `cache_control` through wherever Anthropic accepts it:
+Anthropic caches a prompt prefix up to each `cache_control` breakpoint. With `CacheOptions`, Anthropic places one breakpoint automatically. To choose where breakpoints go, Tessaract also passes `cache_control` through wherever Anthropic accepts it:
 
 ```python
 from tessaract import FunctionTool, FunctionToolResult, SystemPrompt

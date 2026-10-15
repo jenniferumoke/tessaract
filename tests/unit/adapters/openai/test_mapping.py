@@ -3,7 +3,7 @@ import json
 import pytest
 from openai import Omit
 
-from tessaract import FunctionTool, FunctionToolResult, InputSchema, Property, ReasoningOptions
+from tessaract import CacheOptions, FunctionTool, FunctionToolResult, InputSchema, Property, ReasoningOptions
 from tessaract.types.request import Request
 
 
@@ -142,3 +142,31 @@ def test_unknown_stream_events_keep_their_native_name_in_provider_type(openai_ad
     assert normalized.type == "custom_provider_event"
     assert normalized.provider_type == "response.in_progress"
     assert normalized.raw_event is event
+
+
+def test_no_cache_options_sends_no_cache_params(openai_adapter):
+    kwargs = openai_adapter._build_request_kwargs(Request(model="gpt-test", input=[]))
+
+    assert "prompt_cache_retention" not in kwargs
+    assert "prompt_cache_key" not in kwargs
+
+@pytest.mark.parametrize(("retention", "native"), [("short", "in_memory"), ("long", "24h")])
+def test_cache_retention_maps_to_prompt_cache_retention(openai_adapter, retention, native):
+    assert openai_adapter.map_cache_params(CacheOptions(retention=retention)) == {"prompt_cache_retention": native}
+
+def test_cache_key_maps_to_prompt_cache_key(openai_adapter):
+    assert openai_adapter.map_cache_params(CacheOptions(key="sea-facts")) == {"prompt_cache_key": "sea-facts"}
+
+def test_empty_cache_options_send_nothing(openai_adapter):
+    assert openai_adapter.map_cache_params(CacheOptions()) == {}
+
+def test_typed_cache_options_win_over_request_options(openai_adapter):
+    request = Request(
+        model="gpt-test", input=[], cache=CacheOptions(retention="long", key="typed"),
+        provider_options={"prompt_cache_key": "native", "prompt_cache_retention": "in_memory"},
+    )
+
+    kwargs = openai_adapter._build_request_kwargs(request)
+
+    assert kwargs["prompt_cache_key"] == "typed"
+    assert kwargs["prompt_cache_retention"] == "24h"

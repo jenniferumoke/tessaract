@@ -1,6 +1,6 @@
 import json
 from collections.abc import Iterator, Sequence
-from typing import cast
+from typing import Any, cast
 
 from openai import Omit
 from openai.types.shared_params import Reasoning as OpenAIReasoningParams
@@ -42,6 +42,7 @@ from ..adapter import (
     Adapter,
     FunctionToolResultProtocol,
     FunctionToolSchemaProtocol,
+    CacheParamsProtocol,
     ReasoningParamsProtocol,
     SystemPromptProtocol,
     UserMessageProtocol,
@@ -103,6 +104,21 @@ class OpenAIAdapter(Adapter):
 
         # native_options add native reasoning fields; the typed fields win
         return cast(OpenAIReasoningParams, {**(reasoning.native_options or {}), **native_reasoning})
+
+    def map_cache_params(self, cache: CacheParamsProtocol | None) -> dict[str, Any]:
+        '''Maps CacheOptions to prompt_cache_retention and prompt_cache_key. OpenAI caches automatically.'''
+        if cache is None:
+            return {}
+
+        native_cache: dict[str, Any] = {}
+
+        if cache.retention is not None:
+            native_cache["prompt_cache_retention"] = "24h" if cache.retention == "long" else "in_memory"
+
+        if cache.key is not None:
+            native_cache["prompt_cache_key"] = cache.key
+
+        return native_cache
 
     def _native_property(self, prop: Property) -> dict:
         native: dict[str, object] = {"type": prop.type}
@@ -410,6 +426,8 @@ class OpenAIAdapter(Adapter):
 
         if request.instructions is not None:
             canonical_params["instructions"] = request.instructions
+
+        canonical_params.update(self.map_cache_params(request.cache))
 
         provider_options = dict(**request.provider_options or {})
 

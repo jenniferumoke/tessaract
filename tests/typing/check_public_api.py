@@ -54,3 +54,10 @@ def response_output(client: Tessaract) -> None:
             print(item.content)
         elif item.type == "provider_output":
             print(item.provider_type)
+
+
+def send_with_cache(client: Tessaract) -> None:
+    from tessaract import CacheOptions
+
+    response = client.send(model="ant/m", input="hi", cache=CacheOptions(retention="long", key="k"))
+    print(response.usage)
