@@ -44,7 +44,8 @@ class CacheOptions:
         Args:
             mode: "implicit" lets the provider place one automatic breakpoint in addition to any
                 cache=True breakpoints; "explicit" caches only at cache=True breakpoints, and nothing
-                when there are none. Sent to OpenAI as prompt_cache_options.mode (gpt-5.6 and later);
+                when there are none. Sent to OpenAI as prompt_cache_options.mode, which only gpt-5.6
+                and later accept (older models only cache automatically);
                 on Anthropic, "explicit" leaves out the top-level cache_control. None means "implicit".
             retention: how long cache entries live. Sent to Anthropic as a "5m" ("short") or "1h"
                 ("long") ttl, on the automatic breakpoint and on every breakpoint without its own ttl.

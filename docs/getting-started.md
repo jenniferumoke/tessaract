@@ -210,7 +210,7 @@ client.send(
 
 | Field | OpenAI | Anthropic |
 | --- | --- | --- |
-| *(no `CacheOptions`)* | Caching stays on: OpenAI caches automatically (on `gpt-5.6`+, with one automatic breakpoint) | No automatic breakpoint; only `cache=True` breakpoints are cached |
+| *(no `CacheOptions`)* | Caching stays on: OpenAI caches automatically. On `gpt-5.6`+, that's one automatic breakpoint | No automatic breakpoint; only `cache=True` breakpoints are cached |
 | *(any `CacheOptions`)* | Nothing extra | Top-level `cache_control`, which places one automatic breakpoint on the last cacheable block |
 | `mode="implicit"` | `prompt_cache_options={"mode": "implicit"}` | Same as passing any `CacheOptions` |
 | `mode="explicit"` | `prompt_cache_options={"mode": "explicit"}`: no automatic breakpoint | No top-level `cache_control` |
@@ -223,7 +223,9 @@ The defaults differ when you pass nothing: OpenAI caches automatically, Anthropi
 
 Typed values take precedence over the same keys in `request_options`. On OpenAI, other `prompt_cache_options` fields you pass in `request_options`, such as `ttl`, are kept.
 
-`prompt_cache_options` is only sent when `mode` is set, because OpenAI accepts it on `gpt-5.6` and later only. OpenAI's cache lifetime controls also depend on the model: `prompt_cache_retention` is deprecated, `gpt-5.5` rejects `"in_memory"`, and `prompt_cache_options.ttl` currently accepts only its default `"30m"`. Since no single value works across models, `retention` is not sent to OpenAI; pass model-specific fields in `request_options`.
+**On OpenAI, `mode` and `cache=True` need `gpt-5.6` or later.** Older OpenAI models only cache automatically: they don't accept `prompt_cache_options` and have no explicit breakpoints. Tessaract doesn't check model names, since that would go stale with every model release, so it sends `mode` and `cache=True` as you set them and the request behaves as the OpenAI API does for that model. With an older model, leave them out; automatic caching and `key` still work. `prompt_cache_options` is only sent when `mode` is set, so a plain `CacheOptions()` or `CacheOptions(key=...)` is safe on any model.
+
+OpenAI's cache lifetime controls also depend on the model: `prompt_cache_retention` is deprecated, `gpt-5.5` rejects `"in_memory"`, and `prompt_cache_options.ttl` currently accepts only its default `"30m"`. Since no single value works across models, `retention` is not sent to OpenAI; pass model-specific fields in `request_options`.
 
 On Anthropic, entries with a longer TTL must come before entries with a shorter one. That's why `retention` also applies to breakpoints without their own `ttl`: a 5-minute breakpoint on the system prompt followed by a 1-hour automatic breakpoint would be rejected.
 
@@ -240,13 +242,13 @@ FunctionToolResult(call_id=call.call_id, result=output, cache=True)
 FunctionTool(name="search", description="...", cache=True)  # Anthropic only
 ```
 
-| Item | OpenAI | Anthropic |
+| Item | OpenAI (`gpt-5.6`+) | Anthropic |
 | --- | --- | --- |
 | `SystemPrompt`, `UserMessage` | `prompt_cache_breakpoint` on the last content part; string content becomes one `input_text` part | `cache_control` on the last content block; string content becomes one `text` block |
 | `FunctionToolResult` | `prompt_cache_breakpoint` on the last output part; string or JSON output becomes one `input_text` part | `cache_control` on the `tool_result` block |
 | `FunctionTool` | Ignored. OpenAI has no breakpoints on tool definitions; tools come before the input, so any later breakpoint covers them | `cache_control` on the tool definition. Put it on the last tool to cache all of them |
 
-A breakpoint that's already in the native content (`cache_control` or `prompt_cache_breakpoint`) is kept as it is. Each provider writes at most four breakpoints per request, and on both the automatic breakpoint counts as one of the four. OpenAI documents breakpoints alongside `prompt_cache_options`, so expect them to need `gpt-5.6` or later too.
+A breakpoint that's already in the native content (`cache_control` or `prompt_cache_breakpoint`) is kept as it is. Each provider writes at most four breakpoints per request, and on both the automatic breakpoint counts as one of the four. On OpenAI, breakpoints need `gpt-5.6` or later, as described above.
 
 Prefixes shorter than the provider's minimum aren't cached, and there is no error. Cache reads and writes are reported in `response.usage.cached_input_tokens` and `response.usage.cache_write_input_tokens`.
 

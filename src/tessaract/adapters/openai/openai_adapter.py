@@ -62,7 +62,10 @@ class OpenAIAdapter(Adapter):
         }
 
     def _mark_last_part(self, content) -> list:
-        '''Adds an explicit prompt_cache_breakpoint to the last content part. One it already has is kept.'''
+        '''Adds an explicit prompt_cache_breakpoint to the last content part. One it already has is kept.
+
+            Only gpt-5.6 and later support breakpoints. The model isn't checked, so the API decides.
+        '''
         parts = [{"type": "input_text", "text": content}] if isinstance(content, str) else list(content)
 
         if not parts or "prompt_cache_breakpoint" in parts[-1]:

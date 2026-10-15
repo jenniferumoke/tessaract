@@ -148,7 +148,7 @@ response = client.send(model="oai/gpt-5.6-luna", input=history, tools=tools)
 | `call_id` | `str` | required | The `call_id` of the `FunctionCallOutputItem` this result answers |
 | `result` | `Any` | required | The tool's output. |
 | `is_error` | `bool` | `False` | Marks the call as failed. |
-| `cache` | `bool` | `False` | Puts a prompt-caching breakpoint on the result. On OpenAI, the output is sent as an `input_text` part so it can carry the breakpoint. |
+| `cache` | `bool` | `False` | Puts a prompt-caching breakpoint on the result. On OpenAI (`gpt-5.6` or later), the output is sent as an `input_text` part so it can carry the breakpoint. |
 | `provider_options` | `dict` | `{}` | Extra native fields merged into the result, such as Anthropic `cache_control`. They can't override the canonical fields. |
 
 The OpenAI adapter maps it to `{"type": "function_call_output", "call_id": ..., "output": ...}`. The `output` depends on `result` and `is_error`:
