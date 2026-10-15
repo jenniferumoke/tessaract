@@ -54,3 +54,21 @@ def response_output(client: Tessaract) -> None:
             print(item.content)
         elif item.type == "provider_output":
             print(item.provider_type)
+
+
+def send_with_cache(client: Tessaract) -> None:
+    from tessaract import CacheOptions
+
+    response = client.send(model="ant/m", input="hi", cache=CacheOptions(retention="long", key="k"))
+    print(response.usage)
+
+
+def send_with_cache_breakpoints(client: Tessaract) -> None:
+    from tessaract import CacheOptions, FunctionTool, SystemPrompt
+
+    client.send(
+        model="oai/m",
+        input=[SystemPrompt(content="docs", cache=True), "hi"],
+        tools=[FunctionTool(name="t", description="t", cache=True)],
+        cache=CacheOptions(mode="explicit"),
+    )

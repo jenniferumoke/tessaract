@@ -16,6 +16,7 @@ class InputType(BaseModel):
 class UserMessage(InputType):
     role: Literal["user"] = "user"
     content: str | list[dict]
+    cache: bool = False
 
     def raw(self, adapter: Adapter):
         return adapter.map_input_message(self)
@@ -23,6 +24,7 @@ class UserMessage(InputType):
 class SystemPrompt(InputType):
     role: Literal["system"] = "system"
     content: str | list[dict]
+    cache: bool = False
 
     def raw(self, adapter: Adapter):
         return adapter.map_input_message(self)
@@ -32,6 +34,7 @@ class FunctionToolResult(InputType):
     call_id: str
     result: Any
     is_error: bool = False
+    cache: bool = False
     provider_options: dict[str, Any] = Field(default_factory=dict)
 
     def raw(self, adapter: Adapter):

@@ -7,6 +7,7 @@ from ..adapter import (
     AssistantMessageProtocol,
     FunctionToolResultProtocol,
     FunctionToolSchemaProtocol,
+    CacheParamsProtocol,
     ReasoningParamsProtocol,
     UserMessageProtocol,
     SystemPromptProtocol
@@ -71,8 +72,35 @@ class AnthropicAdapter(Adapter):
         # system messages are moved to the top-level system parameter in _build_request_kwargs
         return {
             "role": item.role,
-            "content": item.content
+            "content": self._mark_last_block(item.content) if item.cache else item.content
         }
+
+    def _with_cache_control(self, block: dict) -> dict:
+        '''Adds a cache breakpoint to a block. A cache_control the block already has is kept.'''
+        if "cache_control" in block:
+            return block
+        return {**block, "cache_control": {"type": "ephemeral"}}
+
+    def _mark_last_block(self, content) -> list:
+        blocks = self._as_blocks(content)
+        if not blocks:
+            return blocks
+        return [*blocks[:-1], self._with_cache_control(blocks[-1])]
+
+    def _apply_ttl(self, blocks: list, ttl: str) -> list:
+        '''Sets ttl on every cache breakpoint that doesn't have one.
+
+            Anthropic requires longer-TTL entries to come before shorter ones, so block breakpoints
+            must not be shorter than the automatic breakpoint at the end of the prompt.
+        '''
+        return [
+            {**block, "cache_control": {**block["cache_control"], "ttl": ttl}}
+            if isinstance(block, dict)
+            and isinstance(block.get("cache_control"), dict)
+            and "ttl" not in block["cache_control"]
+            else block
+            for block in blocks
+        ]
 
     def map_assistant_message(self, item: AssistantMessageProtocol):
         parts = item.content if isinstance(item.content, list) else [item.content]
@@ -122,6 +150,9 @@ class AnthropicAdapter(Adapter):
         if item.is_error:
             block["is_error"] = True
 
+        if item.cache:
+            block = self._with_cache_control(block)
+
         return {
             "role": "user",
             "content": [block]
@@ -155,6 +186,22 @@ class AnthropicAdapter(Adapter):
                     f"Anthropic does not accept reasoning summary {summary!r}. "
                     'Use "auto", "concise", "detailed", "omitted" or "updates".'
                 )
+
+    def map_cache_params(self, cache: CacheParamsProtocol | None) -> dict[str, Any]:
+        '''Maps CacheOptions to Anthropic's top-level cache_control, which turns on automatic caching.
+
+            Mode "explicit" leaves it out, so only block-level breakpoints are cached.
+            CacheOptions.key has no Anthropic equivalent and is ignored.
+        '''
+        if cache is None or cache.mode == "explicit":
+            return {}
+
+        cache_control: dict[str, Any] = {"type": "ephemeral"}
+
+        if cache.retention is not None:
+            cache_control["ttl"] = "1h" if cache.retention == "long" else "5m"
+
+        return {"cache_control": cache_control}
 
     def map_reasoning_params(
         self,
@@ -278,6 +325,10 @@ class AnthropicAdapter(Adapter):
             _native_tool_schema["strict"] = tool.strict if tool.strict is not None else True
             _native_tool_schema["input_schema"] = self._native_tool_parameters(tool.input_schema)
 
+            # a cache_control in provider_options is kept, as on other blocks
+            if tool.cache and "cache_control" not in tool.provider_options:
+                _native_tool_schema["cache_control"] = {"type": "ephemeral"}
+
             canonical_keys = {
                 "type",
                 "name",
@@ -370,13 +421,28 @@ class AnthropicAdapter(Adapter):
                 **reasoning_params["output_config"],
             }
 
+        cache = request.cache
+
+        if cache is not None:
+            canonical_params.update(self.map_cache_params(cache))
+            # typed cache options decide top-level caching, also when mode "explicit" turns it off
+            provider_options.pop("cache_control", None)
+
+            if cache.retention is not None:
+                ttl = "1h" if cache.retention == "long" else "5m"
+                for key in ("system", "tools"):
+                    if key in canonical_params:
+                        canonical_params[key] = self._apply_ttl(canonical_params[key], ttl)
+                for message in messages:
+                    message["content"] = self._apply_ttl(message["content"], ttl)
+
         extra_body = provider_options.get("extra_body")
 
         if extra_body is not None:
             provider_options["extra_body"] = {
                 key: value
                 for key, value in extra_body.items()
-                if key not in canonical_params
+                if key not in canonical_params and not (cache is not None and key == "cache_control")
             }
 
         return {**provider_options, **canonical_params}

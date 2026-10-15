@@ -3,7 +3,7 @@ import json
 import pytest
 from openai import Omit
 
-from tessaract import FunctionTool, FunctionToolResult, InputSchema, Property, ReasoningOptions
+from tessaract import CacheOptions, FunctionTool, FunctionToolResult, InputSchema, Property, ReasoningOptions
 from tessaract.types.request import Request
 
 
@@ -142,3 +142,89 @@ def test_unknown_stream_events_keep_their_native_name_in_provider_type(openai_ad
     assert normalized.type == "custom_provider_event"
     assert normalized.provider_type == "response.in_progress"
     assert normalized.raw_event is event
+
+
+def test_no_cache_options_sends_no_cache_params(openai_adapter):
+    kwargs = openai_adapter._build_request_kwargs(Request(model="gpt-test", input=[]))
+
+    assert "prompt_cache_retention" not in kwargs
+    assert "prompt_cache_key" not in kwargs
+
+@pytest.mark.parametrize("retention", ["short", "long"])
+def test_cache_retention_is_not_sent(openai_adapter, retention):
+    assert openai_adapter.map_cache_params(CacheOptions(retention=retention)) == {}
+
+def test_cache_key_maps_to_prompt_cache_key(openai_adapter):
+    assert openai_adapter.map_cache_params(CacheOptions(key="sea-facts")) == {"prompt_cache_key": "sea-facts"}
+
+def test_empty_cache_options_send_nothing(openai_adapter):
+    assert openai_adapter.map_cache_params(CacheOptions()) == {}
+
+def test_typed_cache_key_wins_and_native_cache_fields_pass_through(openai_adapter):
+    request = Request(
+        model="gpt-test", input=[], cache=CacheOptions(retention="long", key="typed"),
+        provider_options={"prompt_cache_key": "native", "prompt_cache_options": {"ttl": "30m"}},
+    )
+
+    kwargs = openai_adapter._build_request_kwargs(request)
+
+    assert kwargs["prompt_cache_key"] == "typed"
+    assert kwargs["prompt_cache_options"] == {"ttl": "30m"}
+    assert "prompt_cache_retention" not in kwargs
+
+def test_mode_maps_to_prompt_cache_options(openai_adapter):
+    assert openai_adapter.map_cache_params(CacheOptions(mode="explicit")) == {"prompt_cache_options": {"mode": "explicit"}}
+
+def test_no_mode_sends_no_prompt_cache_options(openai_adapter):
+    kwargs = openai_adapter._build_request_kwargs(Request(model="gpt-test", input=[], cache=CacheOptions(key="k")))
+
+    assert "prompt_cache_options" not in kwargs
+
+def test_typed_mode_wins_and_keeps_native_prompt_cache_options_fields(openai_adapter):
+    request = Request(
+        model="gpt-test", input=[], cache=CacheOptions(mode="explicit"),
+        provider_options={"prompt_cache_options": {"mode": "implicit", "ttl": "30m"}},
+    )
+
+    kwargs = openai_adapter._build_request_kwargs(request)
+
+    assert kwargs["prompt_cache_options"] == {"mode": "explicit", "ttl": "30m"}
+
+def test_cached_system_prompt_string_becomes_a_part_with_a_breakpoint(openai_adapter):
+    from tessaract import SystemPrompt
+
+    native = openai_adapter.map_input_message(SystemPrompt(content="Long docs", cache=True))
+
+    assert native == {
+        "role": "system",
+        "content": [{"type": "input_text", "text": "Long docs", "prompt_cache_breakpoint": {"mode": "explicit"}}],
+    }
+
+def test_cached_user_message_marks_only_its_last_part(openai_adapter):
+    from tessaract import UserMessage
+
+    first = {"type": "input_text", "text": "a"}
+    last = {"type": "input_text", "text": "b"}
+
+    native = openai_adapter.map_input_message(UserMessage(content=[first, last], cache=True))
+
+    assert native["content"] == [first, {**last, "prompt_cache_breakpoint": {"mode": "explicit"}}]
+    assert "prompt_cache_breakpoint" not in last
+
+def test_uncached_message_content_is_unchanged(openai_adapter):
+    from tessaract import UserMessage
+
+    assert openai_adapter.map_input_message(UserMessage(content="hi")) == {"role": "user", "content": "hi"}
+
+def test_cached_tool_result_output_becomes_a_part_with_a_breakpoint(openai_adapter):
+    native = openai_adapter.map_tool_result(FunctionToolResult(call_id="c1", result={"temp": 19}, cache=True))
+
+    assert native["output"] == [
+        {"type": "input_text", "text": '{"temp": 19}', "prompt_cache_breakpoint": {"mode": "explicit"}}
+    ]
+
+def test_tool_definition_cache_is_ignored(openai_adapter):
+    native = openai_adapter.map_function_schema([FunctionTool(name="a", description="a", cache=True)])
+
+    assert "cache" not in native[0]
+    assert "prompt_cache_breakpoint" not in native[0]

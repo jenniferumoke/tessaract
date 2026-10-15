@@ -6,7 +6,7 @@ pytest.importorskip("anthropic")
 
 from anthropic.types import TextBlock, ThinkingBlock, ToolUseBlock
 
-from tessaract import FunctionTool, FunctionToolResult, InputSchema, Property, ReasoningOptions
+from tessaract import CacheOptions, FunctionTool, FunctionToolResult, InputSchema, Property, ReasoningOptions
 from tessaract.adapters.anthropic.anthropic_adapter import (
     DEFAULT_ANTHROPIC_MAX_TOKENS,
     THINKING_BINDING_CONTROLS_BETA,
@@ -331,6 +331,134 @@ def test_canonical_request_params_win_over_provider_options(anthropic_adapter):
     assert kwargs["model"] == "claude-test"
     assert kwargs["temperature"] == 0.2
     assert kwargs["cache_control"] == {"type": "ephemeral"}
+
+
+# --- cache options ------------------------------------------------------------
+
+def test_no_cache_options_sends_no_cache_control(anthropic_adapter):
+    kwargs = anthropic_adapter._build_request_kwargs(Request(model="claude-test", input=[]))
+
+    assert "cache_control" not in kwargs
+
+def test_cache_options_turn_on_automatic_caching(anthropic_adapter):
+    kwargs = anthropic_adapter._build_request_kwargs(
+        Request(model="claude-test", input=[], cache=CacheOptions())
+    )
+
+    assert kwargs["cache_control"] == {"type": "ephemeral"}
+
+@pytest.mark.parametrize(("retention", "ttl"), [("short", "5m"), ("long", "1h")])
+def test_cache_retention_maps_to_ttl(anthropic_adapter, retention, ttl):
+    native = anthropic_adapter.map_cache_params(CacheOptions(retention=retention))
+
+    assert native == {"cache_control": {"type": "ephemeral", "ttl": ttl}}
+
+def test_cache_key_is_ignored(anthropic_adapter):
+    assert anthropic_adapter.map_cache_params(CacheOptions(key="k")) == {"cache_control": {"type": "ephemeral"}}
+
+def test_typed_cache_options_win_over_request_option_cache_control(anthropic_adapter):
+    request = Request(
+        model="claude-test", input=[], cache=CacheOptions(retention="long"),
+        provider_options={"cache_control": {"type": "ephemeral"}, "extra_body": {"cache_control": "x"}},
+    )
+
+    kwargs = anthropic_adapter._build_request_kwargs(request)
+
+    assert kwargs["cache_control"] == {"type": "ephemeral", "ttl": "1h"}
+    assert kwargs["extra_body"] == {}
+
+
+def test_explicit_mode_sends_no_top_level_cache_control(anthropic_adapter):
+    request = Request(
+        model="claude-test", input=[], cache=CacheOptions(mode="explicit"),
+        provider_options={"cache_control": {"type": "ephemeral"}, "extra_body": {"cache_control": "x"}},
+    )
+
+    kwargs = anthropic_adapter._build_request_kwargs(request)
+
+    assert "cache_control" not in kwargs
+    assert kwargs["extra_body"] == {}
+
+def test_implicit_mode_turns_on_automatic_caching(anthropic_adapter):
+    native = anthropic_adapter.map_cache_params(CacheOptions(mode="implicit"))
+
+    assert native == {"cache_control": {"type": "ephemeral"}}
+
+
+# --- cache breakpoints --------------------------------------------------------
+
+def test_cached_system_prompt_string_becomes_a_marked_block(anthropic_adapter):
+    from tessaract import SystemPrompt
+
+    kwargs = anthropic_adapter._build_request_kwargs(
+        _request(anthropic_adapter, [SystemPrompt(content="Long docs", cache=True), "hi"])
+    )
+
+    assert kwargs["system"] == [{"type": "text", "text": "Long docs", "cache_control": {"type": "ephemeral"}}]
+
+def test_cached_user_message_marks_only_its_last_block(anthropic_adapter):
+    from tessaract import UserMessage
+
+    first = {"type": "text", "text": "a"}
+    last = {"type": "text", "text": "b"}
+
+    native = anthropic_adapter.map_input_message(UserMessage(content=[first, last], cache=True))
+
+    assert native["content"] == [first, {**last, "cache_control": {"type": "ephemeral"}}]
+    assert "cache_control" not in last
+
+def test_cache_shorthand_keeps_an_existing_cache_control(anthropic_adapter):
+    from tessaract import UserMessage
+
+    block = {"type": "text", "text": "a", "cache_control": {"type": "ephemeral", "ttl": "1h"}}
+
+    native = anthropic_adapter.map_input_message(UserMessage(content=[block], cache=True))
+
+    assert native["content"] == [block]
+
+def test_cached_tool_result_gets_cache_control(anthropic_adapter):
+    native = anthropic_adapter.map_tool_result(FunctionToolResult(call_id="c1", result="ok", cache=True))
+
+    assert native["content"][0]["cache_control"] == {"type": "ephemeral"}
+
+def test_cached_tool_definition_gets_cache_control(anthropic_adapter):
+    native = anthropic_adapter.map_function_schema([
+        FunctionTool(name="a", description="a"),
+        FunctionTool(name="b", description="b", cache=True),
+        FunctionTool(name="c", description="c", cache=True, provider_options={"cache_control": {"type": "ephemeral", "ttl": "1h"}}),
+    ])
+
+    assert "cache_control" not in native[0]
+    assert native[1]["cache_control"] == {"type": "ephemeral"}
+    assert native[2]["cache_control"] == {"type": "ephemeral", "ttl": "1h"}
+
+def test_retention_sets_ttl_on_breakpoints_without_one(anthropic_adapter):
+    from tessaract import SystemPrompt, UserMessage
+
+    kept = {"type": "text", "text": "q", "cache_control": {"type": "ephemeral", "ttl": "5m"}}
+    request = _request(
+        anthropic_adapter,
+        [SystemPrompt(content="docs", cache=True), UserMessage(content=[kept]), "hi"],
+        tools=[FunctionTool(name="t", description="t", cache=True)],
+    )
+    request.cache = CacheOptions(retention="long")
+
+    kwargs = anthropic_adapter._build_request_kwargs(request)
+
+    assert kwargs["system"][0]["cache_control"] == {"type": "ephemeral", "ttl": "1h"}
+    assert kwargs["tools"][0]["cache_control"] == {"type": "ephemeral", "ttl": "1h"}
+    assert kwargs["messages"][0]["content"][0] == kept
+    assert kwargs["cache_control"] == {"type": "ephemeral", "ttl": "1h"}
+
+def test_breakpoints_have_no_ttl_without_retention(anthropic_adapter):
+    from tessaract import SystemPrompt
+
+    kwargs = anthropic_adapter._build_request_kwargs(
+        _request(anthropic_adapter, [SystemPrompt(content="docs", cache=True), "hi"])
+    )
+
+    assert kwargs["system"][0]["cache_control"] == {"type": "ephemeral"}
+    assert "cache_control" not in kwargs
 
 
 # --- beta routing -------------------------------------------------------------
