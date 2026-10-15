@@ -223,7 +223,7 @@ The defaults differ when you pass nothing: OpenAI caches automatically, Anthropi
 
 Typed values take precedence over the same keys in `request_options`. On OpenAI, other `prompt_cache_options` fields you pass in `request_options`, such as `ttl`, are kept.
 
-**On OpenAI, `mode` and `cache=True` need `gpt-5.6` or later.** Older OpenAI models only cache automatically: they don't accept `prompt_cache_options` and have no explicit breakpoints. Tessaract doesn't check model names, since that would go stale with every model release, so it sends `mode` and `cache=True` as you set them and the request behaves as the OpenAI API does for that model. With an older model, leave them out; automatic caching and `key` still work. `prompt_cache_options` is only sent when `mode` is set, so a plain `CacheOptions()` or `CacheOptions(key=...)` is safe on any model.
+**On OpenAI, `mode` and `cache=True` need `gpt-5.6` or later.** Older OpenAI models only cache automatically, and reject both `prompt_cache_options` and `prompt_cache_breakpoint`. With an older model, leave `mode` and `cache=True` out; automatic caching and `key` still work. `prompt_cache_options` is only sent when `mode` is set, so a plain `CacheOptions()` or `CacheOptions(key=...)` is safe on any model.
 
 OpenAI's cache lifetime controls also depend on the model: `prompt_cache_retention` is deprecated, `gpt-5.5` rejects `"in_memory"`, and `prompt_cache_options.ttl` currently accepts only its default `"30m"`. Since no single value works across models, `retention` is not sent to OpenAI; pass model-specific fields in `request_options`.
 
