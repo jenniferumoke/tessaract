@@ -42,9 +42,9 @@ class CacheOptions:
     '''Canonical prompt caching options, mapped to each provider's native parameters.
 
         Args:
-            retention: how long cache entries live. "short" is Anthropic's 5-minute ttl and OpenAI's
-                in_memory retention; "long" is Anthropic's 1-hour ttl and OpenAI's 24h retention.
-                None uses the provider default.
+            retention: how long cache entries live. Sent to Anthropic as a "5m" ("short") or "1h"
+                ("long") ttl. OpenAI's lifetime fields differ by model, so the OpenAI adapter ignores
+                it. None uses the provider default.
             key: a cache routing key, sent to OpenAI as prompt_cache_key. Anthropic has no
                 equivalent, so the Anthropic adapter ignores it.
     '''

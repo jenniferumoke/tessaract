@@ -138,10 +138,10 @@ See [Reasoning](reasoning.md).
 
 | Field | Type | Default | OpenAI | Anthropic |
 | --- | --- | --- | --- | --- |
-| `retention` | `"short" \| "long" \| None` | `None` | `prompt_cache_retention`: `"in_memory"` / `"24h"` | `cache_control.ttl`: `"5m"` / `"1h"` |
+| `retention` | `"short" \| "long" \| None` | `None` | Ignored | `cache_control.ttl`: `"5m"` / `"1h"` |
 | `key` | `str \| None` | `None` | `prompt_cache_key` | Ignored |
 
-On Anthropic, passing any `CacheOptions` sends a top-level `cache_control`, which turns on automatic caching. OpenAI caches automatically, so an empty `CacheOptions()` sends nothing there. Fields left as `None` are not sent. The typed values take precedence over the same keys in `request_options`. See [Prompt caching](getting-started.md#prompt-caching).
+On Anthropic, passing any `CacheOptions` sends a top-level `cache_control`, which turns on automatic caching. OpenAI caches automatically, so only `key` is sent there; OpenAI's lifetime fields differ by model, so set them in `request_options` if you need them. Fields left as `None` are not sent. The typed values take precedence over the same keys in `request_options`. See [Prompt caching](getting-started.md#prompt-caching).
 
 ### `Request`
 

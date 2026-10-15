@@ -106,19 +106,16 @@ class OpenAIAdapter(Adapter):
         return cast(OpenAIReasoningParams, {**(reasoning.native_options or {}), **native_reasoning})
 
     def map_cache_params(self, cache: CacheParamsProtocol | None) -> dict[str, Any]:
-        '''Maps CacheOptions to prompt_cache_retention and prompt_cache_key. OpenAI caches automatically.'''
-        if cache is None:
+        '''Maps CacheOptions.key to prompt_cache_key. OpenAI caches automatically.
+
+            CacheOptions.retention is ignored. prompt_cache_retention is deprecated, gpt-5.5 rejects
+            in_memory, and gpt-5.6's prompt_cache_options.ttl accepts only its default, so no value
+            maps safely across current models. Use request_options for model-specific cache fields.
+        '''
+        if cache is None or cache.key is None:
             return {}
 
-        native_cache: dict[str, Any] = {}
-
-        if cache.retention is not None:
-            native_cache["prompt_cache_retention"] = "24h" if cache.retention == "long" else "in_memory"
-
-        if cache.key is not None:
-            native_cache["prompt_cache_key"] = cache.key
-
-        return native_cache
+        return {"prompt_cache_key": cache.key}
 
     def _native_property(self, prop: Property) -> dict:
         native: dict[str, object] = {"type": prop.type}

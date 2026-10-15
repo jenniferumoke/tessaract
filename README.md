@@ -262,7 +262,7 @@ src/tessaract/
 - Function tools with parallel calls
 - Reasoning effort and summaries
 - Pass-through request options
-- Prompt caching retention and keys via `CacheOptions`
+- Prompt cache keys via `CacheOptions`
 - Token usage on `Response`, including OpenAI usage details
 
 **Working today (Anthropic):**

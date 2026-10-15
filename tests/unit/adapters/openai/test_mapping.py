@@ -150,9 +150,9 @@ def test_no_cache_options_sends_no_cache_params(openai_adapter):
     assert "prompt_cache_retention" not in kwargs
     assert "prompt_cache_key" not in kwargs
 
-@pytest.mark.parametrize(("retention", "native"), [("short", "in_memory"), ("long", "24h")])
-def test_cache_retention_maps_to_prompt_cache_retention(openai_adapter, retention, native):
-    assert openai_adapter.map_cache_params(CacheOptions(retention=retention)) == {"prompt_cache_retention": native}
+@pytest.mark.parametrize("retention", ["short", "long"])
+def test_cache_retention_is_not_sent(openai_adapter, retention):
+    assert openai_adapter.map_cache_params(CacheOptions(retention=retention)) == {}
 
 def test_cache_key_maps_to_prompt_cache_key(openai_adapter):
     assert openai_adapter.map_cache_params(CacheOptions(key="sea-facts")) == {"prompt_cache_key": "sea-facts"}
@@ -160,13 +160,14 @@ def test_cache_key_maps_to_prompt_cache_key(openai_adapter):
 def test_empty_cache_options_send_nothing(openai_adapter):
     assert openai_adapter.map_cache_params(CacheOptions()) == {}
 
-def test_typed_cache_options_win_over_request_options(openai_adapter):
+def test_typed_cache_key_wins_and_native_cache_fields_pass_through(openai_adapter):
     request = Request(
         model="gpt-test", input=[], cache=CacheOptions(retention="long", key="typed"),
-        provider_options={"prompt_cache_key": "native", "prompt_cache_retention": "in_memory"},
+        provider_options={"prompt_cache_key": "native", "prompt_cache_options": {"ttl": "30m"}},
     )
 
     kwargs = openai_adapter._build_request_kwargs(request)
 
     assert kwargs["prompt_cache_key"] == "typed"
-    assert kwargs["prompt_cache_retention"] == "24h"
+    assert kwargs["prompt_cache_options"] == {"ttl": "30m"}
+    assert "prompt_cache_retention" not in kwargs

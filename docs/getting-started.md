@@ -210,10 +210,12 @@ client.send(
 | Field | OpenAI | Anthropic |
 | --- | --- | --- |
 | *(any `CacheOptions`)* | Nothing extra; OpenAI caches automatically | Top-level `cache_control`, which turns on automatic caching |
-| `retention="short"` / `"long"` | `prompt_cache_retention="in_memory"` / `"24h"` | `ttl="5m"` / `"1h"` |
+| `retention="short"` / `"long"` | Ignored | `ttl="5m"` / `"1h"` |
 | `key` | `prompt_cache_key` | Ignored |
 
 Typed values take precedence over the same keys in `request_options`.
+
+OpenAI's cache lifetime controls depend on the model: `prompt_cache_retention` is deprecated, `gpt-5.5` rejects `"in_memory"`, and `gpt-5.6` and later use `prompt_cache_options`, whose `ttl` currently accepts only its default `"30m"`. Since no single value works across models, `retention` is not sent to OpenAI. To set these fields for a specific model, pass them in `request_options`.
 
 ### Prompt caching on Anthropic
 

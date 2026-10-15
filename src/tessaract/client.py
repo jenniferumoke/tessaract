@@ -161,8 +161,8 @@ class Tessaract:
                     Anthropic models, since output limits differ between models.
                 instructions: system instructions for this request. Sent to OpenAI as the native
                     instructions parameter, and to Anthropic as the first block of system.
-                cache: canonical prompt caching options. Sent to OpenAI as prompt_cache_retention and
-                    prompt_cache_key, and to Anthropic as top-level cache_control (automatic caching).
+                cache: canonical prompt caching options. Sent to Anthropic as top-level cache_control
+                    (automatic caching), and to OpenAI as prompt_cache_key.
         '''
 
         provider, model = self._normalize_model_name(model=model)
