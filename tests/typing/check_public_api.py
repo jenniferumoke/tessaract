@@ -20,6 +20,8 @@ def stream_events(client: Tessaract) -> None:
             print(event.delta)
         elif event.type == "tool_call.started":
             print(event.call_id, event.name)
+        elif event.type == "server_tool_call.started":
+            print(event.call_id, event.name, event.output_index)
         elif event.type == "tool_arguments.delta":
             print(event.delta)
         elif event.type == "output_item.done":
@@ -52,6 +54,8 @@ def response_output(client: Tessaract) -> None:
             print(item.call_id, item.name, item.arguments)
         elif item.type == "assistant_message":
             print(item.content)
+        elif item.type == "web_search_call":
+            print(item.call_id, item.status, item.queries, [source.url for source in item.sources])
         elif item.type == "provider_output":
             print(item.provider_type)
 
@@ -72,3 +76,19 @@ def send_with_cache_breakpoints(client: Tessaract) -> None:
         tools=[FunctionTool(name="t", description="t", cache=True)],
         cache=CacheOptions(mode="explicit"),
     )
+
+
+def send_with_server_tools(client: Tessaract) -> None:
+    from tessaract import FunctionTool, ProviderTool, UserLocation, WebSearchTool
+
+    response = client.send(
+        model="ant/m",
+        input="hi",
+        tools=[
+            WebSearchTool(max_uses=3, user_location=UserLocation(country="NL")),
+            FunctionTool(name="t", description="t"),
+            ProviderTool(provider="anthropic", definition={"type": "web_fetch_20250910", "name": "web_fetch"}),
+        ],
+    )
+    if response.usage and response.usage.server_tool_requests:
+        print(response.usage.server_tool_requests.get("web_search"))

@@ -30,6 +30,7 @@ More concretely, Tessaract exposes a **canonical model of the LLM ecosystem**: r
 
 - **Provider prefixes.** Register a provider under a prefix and address models as `"<prefix>/<model>"`, e.g. `"oai/gpt-5.6-luna"`.
 - **Canonical tools.** Define function tools once with `FunctionTool` / `InputSchema` / `Property`, including nested objects, arrays, enums and nullable fields. The adapter emits the provider's native schema.
+- **Server tools.** Add web search with `WebSearchTool`, next to your function tools. Searches come back as typed `WebSearchCallOutputItem`s with their queries and sources. Other native tools work through `ProviderTool`.
 - **Canonical reasoning.** Control effort and summaries with `ReasoningOptions`; read reasoning back as `ReasoningOutputItem`s.
 - **Typed output.** Responses contain `AssistantMessage`, `ReasoningOutputItem`, `FunctionCallOutputItem` and `ProviderOutputItem` objects. Function-call arguments are already parsed into a `dict`.
 - **Canonical streaming events.** Text, reasoning and tool-argument deltas are normalized into typed events (`text.delta`, `reasoning_summary.delta`, `response.completed`, …).
@@ -260,6 +261,7 @@ src/tessaract/
 - Synchronous and streaming requests via the Responses API
 - Multi-turn conversations
 - Function tools with parallel calls
+- Web search via `WebSearchTool`, and any native tool via `ProviderTool`
 - Reasoning effort and summaries
 - Pass-through request options
 - Prompt caching via `CacheOptions` (mode and key) and `cache=True` breakpoints
@@ -270,6 +272,7 @@ src/tessaract/
 - Synchronous and streaming requests via the Messages API
 - Multi-turn conversations, with automatic grouping into user/assistant turns
 - Function tools with parallel calls, and native tool-result error flags
+- Web search via `WebSearchTool`, and any native server tool (e.g. web fetch, code execution) via `ProviderTool`
 - Adaptive, budgeted and between-tools thinking, effort, and thinking display (including beta `updates`)
 - System prompts via `instructions=` or `SystemPrompt`, and prompt caching via `CacheOptions`, `cache=True` breakpoints or `cache_control` pass-through
 - Token usage on `Response`, normalized so `input_tokens` includes cached tokens

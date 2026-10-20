@@ -57,6 +57,10 @@ class Usage:
     cache_write_input_tokens: int | None = None
     reasoning_tokens: int | None = None
 
+    # server tool calls by tool name, e.g. {"web_search": 2}; None when no server tools ran.
+    # Anthropic reports these counts; for OpenAI they are the web_search_call items in the output.
+    server_tool_requests: dict[str, int] | None = None
+
 
 @dataclass
 class Response:

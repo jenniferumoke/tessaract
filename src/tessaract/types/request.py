@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from ..tools.function import FunctionTool
+from ..tools import Tool
 
 '''
     thinking={
@@ -66,7 +66,7 @@ class Request:
             model: str
             instructions: str
             input: list[role | content]
-            tools: list[FunctionTool] | None = None
+            tools: list[FunctionTool | WebSearchTool | ProviderTool] | None = None
             reasoning:  ReasoningOptions | None = None
             cache: CacheOptions | None = None
             stream: bool = False
@@ -75,7 +75,7 @@ class Request:
     model: str
     input: list
     instructions: str | None = None
-    tools: list[FunctionTool] | None = None
+    tools: list[Tool] | None = None
     reasoning:  ReasoningOptions | None = None
     cache: CacheOptions | None = None
     stream: bool = False

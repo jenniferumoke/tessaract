@@ -88,7 +88,7 @@ def test_neighbouring_text_blocks_become_one_message(anthropic_client, anthropic
 def test_unknown_and_redacted_blocks_pass_through(anthropic_client, anthropic_api):
     anthropic_api.message = _message([
         {"type": "redacted_thinking", "data": "opaque"},
-        {"type": "server_tool_use", "id": "srvtoolu_1", "name": "web_search", "input": {"query": "x"}},
+        {"type": "server_tool_use", "id": "srvtoolu_1", "name": "web_fetch", "input": {"url": "https://example.com"}},
     ])
 
     response = anthropic_client.send(model="ant/claude-test", input="hi")

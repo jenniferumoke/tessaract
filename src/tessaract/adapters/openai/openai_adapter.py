@@ -5,8 +5,10 @@ from typing import Any, cast
 from openai import Omit
 from openai.types.shared_params import Reasoning as OpenAIReasoningParams
 
+from ...errors import UnsupportedToolOptionError
 from ...providers.openai_provider import OpenAIProvider
 from ...tools.function import InputSchema, Property
+from ...tools.web_search import WebSearchTool
 from ...types.output_types import (
     Annotation,
     AssistantMessage,
@@ -15,6 +17,8 @@ from ...types.output_types import (
     OutputType,
     ReasoningOutputItem,
     TextOutputItem,
+    WebSearchCallOutputItem,
+    WebSource,
 )
 from ...types.request import Request
 from ...types.response import (
@@ -34,6 +38,7 @@ from ...types.streaming.event_types import (
     ResponseCompletedEvent,
     ResponseFailedEvent,
     ResponseStartedEvent,
+    ServerToolCallStartedEvent,
     StreamEventUnion,
     TextDeltaEvent,
     ToolCallStartedEvent,
@@ -49,8 +54,21 @@ from ..adapter import (
     AssistantMessageProtocol
 )
 
+# Without this include, web_search_call items come back without their sources
+WEB_SEARCH_SOURCES_INCLUDE = "web_search_call.action.sources"
+
+# output items for tools OpenAI runs itself, by the tool name used in ServerToolCallStartedEvent
+_SERVER_TOOL_CALL_ITEMS = {
+    "web_search_call": "web_search",
+    "file_search_call": "file_search",
+    "code_interpreter_call": "code_interpreter",
+    "image_generation_call": "image_generation",
+}
+
 
 class OpenAIAdapter(Adapter):
+    provider_name = "openai"
+
     def __init__(self, provider: OpenAIProvider):
         super().__init__(provider)
         self._client = provider.client
@@ -208,6 +226,32 @@ class OpenAIAdapter(Adapter):
             _native_tools_list.append({**extra_fields, **_native_tool_schema})
         return _native_tools_list
 
+    def map_web_search_tool(self, tool: WebSearchTool) -> dict[str, Any]:
+        unsupported = [
+            name for name in ("max_uses", "blocked_domains")
+            if getattr(tool, name) is not None
+        ]
+        if unsupported:
+            raise UnsupportedToolOptionError(
+                f"OpenAI web_search does not support {', '.join(unsupported)}. Remove "
+                f"{'them' if len(unsupported) > 1 else 'it'}, or pass native fields via provider_options."
+            )
+
+        native: dict[str, Any] = {"type": tool.provider_options.get("type", "web_search")}
+
+        if tool.allowed_domains is not None:
+            # keep other native filters; the typed allowed_domains wins
+            native["filters"] = {
+                **(tool.provider_options.get("filters") or {}),
+                "allowed_domains": tool.allowed_domains,
+            }
+
+        if tool.user_location is not None:
+            native["user_location"] = self._native_user_location(tool.user_location)
+
+        # tool.cache is ignored, as on function tools: OpenAI caches tool definitions automatically
+        return {**tool.provider_options, **native}
+
     def _is_content_parts(self, result) -> bool:
         return isinstance(result, list) and all(
             isinstance(part, dict) and "type" in part for part in result
@@ -296,9 +340,35 @@ class OpenAIAdapter(Adapter):
                     arguments=json.loads(output_item.arguments)
                 )
 
+            case "web_search_call":
+                return self._normalize_web_search_call(output_item)
+
             case _:
                 return ProviderOutputItem(raw=output_item, provider_type=output_item.type)
 
+
+    def _normalize_web_search_call(self, output_item) -> WebSearchCallOutputItem:
+        action = output_item.action
+
+        # older responses have a single query; newer ones list every query in queries
+        queries = getattr(action, "queries", None) or (
+            [action.query] if getattr(action, "query", None) else []
+        )
+
+        return WebSearchCallOutputItem(
+            raw=output_item,
+            provider="openai",
+            call_id=output_item.id,
+            status=output_item.status,
+            action=action.type,
+            queries=queries,
+            url=getattr(action, "url", None),
+            pattern=getattr(action, "pattern", None),
+            sources=[
+                WebSource(url=source.url)
+                for source in getattr(action, "sources", None) or []
+            ],
+        )
 
     def _normalize_output(self, output_items) -> list[OutputType]:
         return [self._normalize_output_item(item) for item in output_items]
@@ -337,6 +407,14 @@ class OpenAIAdapter(Adapter):
                 yield ToolCallStartedEvent(
                     call_id=event.item.call_id,
                     name=event.item.name,
+                    output_index=event.output_index,
+                    raw_event=event
+                )
+
+            case "response.output_item.added" if event.item.type in _SERVER_TOOL_CALL_ITEMS:
+                yield ServerToolCallStartedEvent(
+                    call_id=event.item.id,
+                    name=_SERVER_TOOL_CALL_ITEMS[event.item.type],
                     output_index=event.output_index,
                     raw_event=event
                 )
@@ -408,9 +486,14 @@ class OpenAIAdapter(Adapter):
                 return None
 
     def _normalize_response(self, raw_response) -> OpenAIResponse:
+        output = self._normalize_output(raw_response.output)
+
         provider_usage = raw_response.usage
         usage = None
         if provider_usage is not None:
+            # OpenAI doesn't report server tool counts, so they are counted from the output
+            web_searches = sum(isinstance(item, WebSearchCallOutputItem) for item in output)
+
             input_details = provider_usage.input_tokens_details
             output_details = provider_usage.output_tokens_details
             usage = Usage(
@@ -420,6 +503,7 @@ class OpenAIAdapter(Adapter):
                 cached_input_tokens=input_details.cached_tokens if input_details is not None else None,
                 cache_write_input_tokens=input_details.cache_write_tokens if input_details is not None else None,
                 reasoning_tokens=output_details.reasoning_tokens if output_details is not None else None,
+                server_tool_requests={"web_search": web_searches} if web_searches else None,
             )
 
         return OpenAIResponse(
@@ -427,7 +511,7 @@ class OpenAIAdapter(Adapter):
             model=raw_response.model,
             status=self._normalize_status(raw_response.status),
             incomplete_reason=self._normalize_incomplete_reason(raw_response),
-            output=self._normalize_output(raw_response.output),
+            output=output,
             error=ResponseError(message=raw_response.error.message, code=raw_response.error.code) if raw_response.error else None,
             usage=usage,
             provider_usage=provider_usage,
@@ -435,20 +519,29 @@ class OpenAIAdapter(Adapter):
         )
 
     def _build_request_kwargs(self, request: Request):
-        canonical_params = {
+        canonical_params: dict[str, Any] = {
             "model": request.model,
             "input": request.input,
-            "tools": self.map_function_schema(request.tools or []),
             "reasoning": self.map_reasoning_params(request.reasoning), 
         }
+
+        provider_options = dict(**request.provider_options or {})
+
+        # only sent when set, so native tools passed in request_options are kept
+        if request.tools:
+            canonical_params["tools"] = self.map_tools(request.tools)
+
+        if any(isinstance(tool, WebSearchTool) for tool in request.tools or []):
+            include = list(provider_options.get("include") or [])
+            if WEB_SEARCH_SOURCES_INCLUDE not in include:
+                include.append(WEB_SEARCH_SOURCES_INCLUDE)
+            canonical_params["include"] = include
 
         if request.max_tokens is not None:
             canonical_params["max_output_tokens"] = request.max_tokens
 
         if request.instructions is not None:
             canonical_params["instructions"] = request.instructions
-
-        provider_options = dict(**request.provider_options or {})
 
         cache_params = self.map_cache_params(request.cache)
 

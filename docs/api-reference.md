@@ -208,6 +208,40 @@ Validation raises `ValueError` if `required` names a property that isn't in `pro
 
 Validation raises `ValueError` if `items` is set on a non-array type, if the object fields are set on a non-object type, or if `required` names an undefined property.
 
+### `WebSearchTool`
+
+`tessaract.WebSearchTool` (a Pydantic model). A web search the provider runs. See [Server tools](tool-calling.md#server-tools).
+
+| Field | Type | Default |
+| --- | --- | --- |
+| `max_uses` | `int \| None` (at least 1) | `None`. Anthropic only |
+| `allowed_domains` | `list[str] \| None` | `None` |
+| `blocked_domains` | `list[str] \| None` | `None`. Anthropic only; cannot be combined with `allowed_domains` |
+| `user_location` | `UserLocation \| None` | `None` |
+| `cache` | `bool` | `False`. Anthropic: `cache_control` on the tool definition. Ignored on OpenAI |
+| `provider_options` | `dict[str, Any]` | `{}`. Native tool fields; `"type"` pins the native tool version |
+
+### `UserLocation`
+
+`tessaract.UserLocation` (a Pydantic model): `city`, `region`, `country` (a two-letter ISO code), `timezone` (an IANA timezone), all `str | None`. Both adapters send it as an `approximate` location.
+
+### `ProviderTool`
+
+`tessaract.ProviderTool` (a Pydantic model). A native tool definition, sent unchanged.
+
+| Field | Type |
+| --- | --- |
+| `provider` | `"openai" \| "anthropic"`: the provider the definition was written for. Sending it to another provider raises `ValueError` |
+| `definition` | `dict[str, Any]` |
+
+### `Tool`
+
+`tessaract.Tool` is `FunctionTool | WebSearchTool | ProviderTool`, the type `send(tools=...)` accepts.
+
+### `UnsupportedToolOptionError`
+
+`tessaract.UnsupportedToolOptionError`, a `ValueError` raised when a canonical tool option has no equivalent on the target provider, such as `WebSearchTool(max_uses=...)` on OpenAI.
+
 See [Tool calling](tool-calling.md).
 
 ---
@@ -269,7 +303,7 @@ Use `SystemPrompt(content="...")` in an input list to provide system instruction
 | `output_text` *(property)* | `str` | All assistant message text joined together |
 | `response_id` *(property)* | `str` | An alias for `id` |
 
-`Usage` includes `input_tokens`, `output_tokens`, `total_tokens`, `cached_input_tokens`, `cache_write_input_tokens`, and `reasoning_tokens`. The detail fields are `None` when the provider does not report them. `OpenAIResponse.provider_usage` holds the native OpenAI SDK usage object, or `None` when usage is unavailable. Completed streaming responses expose both fields through `ResponseCompletedEvent.response`.
+`Usage` includes `input_tokens`, `output_tokens`, `total_tokens`, `cached_input_tokens`, `cache_write_input_tokens`, `reasoning_tokens`, and `server_tool_requests` (server tool calls by tool name, e.g. `{"web_search": 2}`, or `None` when no server tools ran). The detail fields are `None` when the provider does not report them. `OpenAIResponse.provider_usage` holds the native OpenAI SDK usage object, or `None` when usage is unavailable. Completed streaming responses expose both fields through `ResponseCompletedEvent.response`.
 
 `OpenAIResponse` takes `status` from OpenAI's response status, and `incomplete_reason` from `incomplete_details.reason`. `OpenAIResponse.input_tokens` and `OpenAIResponse.cached_input_tokens` provide direct access to the corresponding normalized usage counts. Each returns `None` when usage is unavailable; `cached_input_tokens` is also `None` when the provider does not report that detail.
 
@@ -326,11 +360,12 @@ A `str` enum, in `tessaract.types.response`:
 | `TextOutputItem` | `"text"` | `text: str`, `annotations: list[Annotation]`, `raw` |
 | `ReasoningOutputItem` | `"reasoning"` | `id`, `text` (the summary), `content` (the raw reasoning), `raw` |
 | `FunctionCallOutputItem` | `"function_call"` | `call_id`, `name`, `arguments: dict`, `raw` |
+| `WebSearchCallOutputItem` | `"web_search_call"` | `call_id`, `status` (`"in_progress"`, `"searching"`, `"completed"` or `"failed"`), `action` (`"search"`, `"open_page"` or `"find_in_page"`), `queries: list[str]`, `url`, `pattern`, `sources: list[WebSource]` (`url`, `title`, `page_age`), `error`, `provider`, `raw` |
 | `ProviderOutputItem` | `"provider_output"` | `provider_type` (the native item type), `raw` |
 
 The OpenAI adapter returns an assistant message as a `ProviderOutputItem` (`provider_type="message"`) when it contains anything other than plain `output_text`, such as refusals or annotations and citations. It still replays correctly, and you can inspect it through `.raw`.
 
-The Anthropic adapter returns neighbouring text blocks as one `AssistantMessage` whose `raw` is the list of native text blocks. Thinking blocks become `ReasoningOutputItem`s with `id=None`, and `redacted_thinking`, server tool blocks and any other block types become `ProviderOutputItem`s. Unknown OpenAI output item types are also returned as `ProviderOutputItem`s.
+The Anthropic adapter returns neighbouring text blocks as one `AssistantMessage` whose `raw` is the list of native text blocks. Thinking blocks become `ReasoningOutputItem`s with `id=None`. A web search's `server_tool_use` and `web_search_tool_result` blocks become one `WebSearchCallOutputItem` whose `raw` is the list of both blocks. `redacted_thinking`, other server tool blocks and any other block types become `ProviderOutputItem`s. Unknown OpenAI output item types are also returned as `ProviderOutputItem`s.
 
 `TextOutputItem.annotations` holds citations as `Annotation` objects (`provider`, `provider_type`, `source`, `title`, `cited_text`, `provider_metadata`). On Anthropic they come from a text block's `citations`, and `source` is the URL, source or file ID.
 
@@ -353,6 +388,7 @@ The Anthropic adapter returns neighbouring text blocks as one `AssistantMessage`
 | `ReasoningTextDeltaEvent` | `reasoning_text.delta` |
 | `FunctionCallArgumentDeltaEvent` | `tool_arguments.delta` |
 | `ToolCallStartedEvent` | `tool_call.started` |
+| `ServerToolCallStartedEvent` | `server_tool_call.started` |
 | `OutputItemCompletedEvent` | `output_item.done` |
 | `CustomProviderEvent` | `custom_provider_event` (the native event name is in `provider_type`) |
 

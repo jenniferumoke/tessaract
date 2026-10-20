@@ -1,5 +1,6 @@
 import json
 from collections.abc import Iterator, Sequence
+from dataclasses import dataclass, field
 from typing import Any
 
 from ..adapter import (
@@ -16,6 +17,7 @@ from ..adapter import (
 from ...providers.anthropic_provider import AnthropicProvider
 
 from ...tools.function import InputSchema, Property
+from ...tools.web_search import WebSearchTool
 from ...types.output_types import (
     Annotation,
     AssistantMessage,
@@ -25,6 +27,8 @@ from ...types.output_types import (
     ProviderOutputItem,
     ReasoningOutputItem,
     TextOutputItem,
+    WebSearchCallOutputItem,
+    WebSource,
 )
 from ...types.request import Request
 from ...types.response import (
@@ -44,6 +48,7 @@ from ...types.streaming.event_types import (
     ResponseCompletedEvent,
     ResponseFailedEvent,
     ResponseStartedEvent,
+    ServerToolCallStartedEvent,
     StreamEventUnion,
     TextDeltaEvent,
     ToolCallStartedEvent,
@@ -62,8 +67,25 @@ MIN_THINKING_BUDGET = 1024
 # Convenience events the SDK's MessageStream adds on top of the raw events; they duplicate the deltas
 _STREAM_HELPER_EVENTS = {"text", "thinking", "input_json", "signature", "citation"}
 
+# The web search tool version sent when provider_options doesn't pin one. It works on every current model.
+DEFAULT_WEB_SEARCH_TOOL_TYPE = "web_search_20250305"
+
+# ServerToolUsage fields, by the tool name used in Usage.server_tool_requests
+_SERVER_TOOL_USAGE_FIELDS = {"web_search": "web_search_requests", "web_fetch": "web_fetch_requests"}
+
+
+@dataclass
+class _StreamState:
+    '''What one stream has seen so far. Content block deltas don't say which kind of block they belong to.'''
+    # indexes of server_tool_use blocks, whose input deltas aren't function arguments
+    server_tool_indexes: set[int] = field(default_factory=set)
+    # finished web search server_tool_use blocks, by id, waiting for their result block
+    web_search_calls: dict[str, Any] = field(default_factory=dict)
+
 
 class AnthropicAdapter(Adapter):
+    provider_name = "anthropic"
+
     def __init__(self, provider: AnthropicProvider):
         super().__init__(provider)
         self._client = provider.client
@@ -116,10 +138,12 @@ class AnthropicAdapter(Adapter):
 
     def map_output_item(self, item: OutputItem):
         # thinking, redacted_thinking, tool_use and server tool blocks are replayed unchanged,
-        # thinking signatures included, and merged into one assistant turn in _build_request_kwargs
+        # thinking signatures included, and merged into one assistant turn in _build_request_kwargs.
+        # A web search call's raw is a list: its server_tool_use block and its result block.
+        blocks = item.raw if isinstance(item.raw, list) else [item.raw]
         return {
             "role": "assistant",
-            "content": [self._block_param(item.raw)]
+            "content": [self._block_param(block) for block in blocks]
         }
 
     def _is_content_parts(self, result) -> bool:
@@ -345,6 +369,26 @@ class AnthropicAdapter(Adapter):
             _native_tools_list.append({**extra_fields, **_native_tool_schema})
         return _native_tools_list
 
+    def map_web_search_tool(self, tool: WebSearchTool) -> dict[str, Any]:
+        native: dict[str, Any] = {
+            "type": tool.provider_options.get("type", DEFAULT_WEB_SEARCH_TOOL_TYPE),
+            "name": "web_search",
+        }
+
+        for name in ("max_uses", "allowed_domains", "blocked_domains"):
+            value = getattr(tool, name)
+            if value is not None:
+                native[name] = value
+
+        if tool.user_location is not None:
+            native["user_location"] = self._native_user_location(tool.user_location)
+
+        # a cache_control in provider_options is kept, as on other blocks
+        if tool.cache and "cache_control" not in tool.provider_options:
+            native["cache_control"] = {"type": "ephemeral"}
+
+        return {**tool.provider_options, **native}
+
     def _as_blocks(self, content) -> list:
         if isinstance(content, str):
             return [{"type": "text", "text": content}]
@@ -407,7 +451,7 @@ class AnthropicAdapter(Adapter):
             canonical_params["system"] = system
 
         if request.tools:
-            canonical_params["tools"] = self.map_function_schema(request.tools)
+            canonical_params["tools"] = self.map_tools(request.tools)
 
         reasoning_params = self.map_reasoning_params(request.reasoning, max_tokens=max_tokens)
 
@@ -519,24 +563,91 @@ class AnthropicAdapter(Adapter):
                     arguments=dict(content_block.input)
                 )
 
+            case "server_tool_use" if content_block.name == "web_search":
+                return self._web_search_item(content_block, None)
+
+            case "web_search_tool_result":
+                return self._web_search_item(None, content_block)
+
             case _:
-                # redacted_thinking, server tool blocks and anything newer pass through unchanged
+                # redacted_thinking, other server tool blocks and anything newer pass through unchanged
                 return ProviderOutputItem(
                     provider_type=content_block.type,
                     raw=content_block
                 )
+
+    def _web_search_item(self, call_block, result_block) -> WebSearchCallOutputItem:
+        '''Builds one web search call from its server_tool_use block, its result block, or both.
+
+            A call without a result is still running, e.g. when the turn paused (stop_reason pause_turn).
+        '''
+        if call_block is not None:
+            call_id = call_block.id
+            query = (call_block.input or {}).get("query")
+        elif result_block is not None:
+            call_id = result_block.tool_use_id
+            query = None
+        else:
+            raise ValueError("a web search call needs its server_tool_use block, its result block, or both")
+
+        status = "in_progress"
+        sources: list[WebSource] = []
+        error = None
+
+        if result_block is not None:
+            content = result_block.content
+            if isinstance(content, list):
+                status = "completed"
+                sources = [
+                    WebSource(url=result.url, title=result.title, page_age=result.page_age)
+                    for result in content
+                ]
+            else:
+                status = "failed"
+                error = content.error_code
+
+        return WebSearchCallOutputItem(
+            raw=[block for block in (call_block, result_block) if block is not None],
+            provider="anthropic",
+            call_id=call_id,
+            status=status,
+            queries=[query] if isinstance(query, str) else [],
+            sources=sources,
+            error=error,
+        )
 
     def _text_parts(self, message: AssistantMessage) -> list[TextOutputItem]:
         return message.content if isinstance(message.content, list) else [message.content]
 
     def _normalize_output(self, output_items) -> list[OutputType]:
         output: list[OutputType] = []
+        # web search calls by id, so a result that isn't next to its call still gets the queries
+        web_search_calls: dict[str, WebSearchCallOutputItem] = {}
 
         for block in output_items:
             item = self._normalize_output_item(block)
+            previous = output[-1] if output else None
+
+            if isinstance(item, WebSearchCallOutputItem) and block.type == "server_tool_use":
+                web_search_calls[item.call_id] = item
+
+            # a web search result directly after its server_tool_use block completes that call.
+            # Only neighbouring blocks are merged, so replaying the output keeps the native block order.
+            if (
+                block.type == "web_search_tool_result"
+                and isinstance(previous, WebSearchCallOutputItem)
+                and previous.call_id == block.tool_use_id
+                and previous.status == "in_progress"
+            ):
+                output[-1] = self._web_search_item(previous.raw[0], block)
+
+            # parallel searches interleave calls and results; each stays its own item, in native order
+            elif isinstance(item, WebSearchCallOutputItem) and item.call_id in web_search_calls:
+                item.queries = web_search_calls[item.call_id].queries
+                output.append(item)
 
             # Anthropic splits text at every citation; neighbouring text blocks are one message
-            if isinstance(item, AssistantMessage) and output and isinstance(output[-1], AssistantMessage):
+            elif isinstance(item, AssistantMessage) and output and isinstance(output[-1], AssistantMessage):
                 previous = output[-1]
                 output[-1] = AssistantMessage(
                     raw=[*previous.raw, *item.raw],
@@ -560,6 +671,13 @@ class AnthropicAdapter(Adapter):
 
         output_details = getattr(provider_usage, "output_tokens_details", None)
 
+        server_tool_use = getattr(provider_usage, "server_tool_use", None)
+        server_tool_requests = {
+            name: getattr(server_tool_use, usage_field, None) or 0
+            for name, usage_field in _SERVER_TOOL_USAGE_FIELDS.items()
+        } if server_tool_use is not None else {}
+        server_tool_requests = {name: count for name, count in server_tool_requests.items() if count}
+
         return Usage(
             input_tokens=input_tokens,
             output_tokens=provider_usage.output_tokens,
@@ -567,6 +685,7 @@ class AnthropicAdapter(Adapter):
             cached_input_tokens=cache_read,
             cache_write_input_tokens=cache_write,
             reasoning_tokens=output_details.thinking_tokens if output_details is not None else None,
+            server_tool_requests=server_tool_requests or None,
         )
 
     def _normalize_stop_reason(self, reason) -> StopReason | str | None:
@@ -616,13 +735,25 @@ class AnthropicAdapter(Adapter):
             raw_response=raw_response
         )
 
-    def _normalize_stream_event(self, event) -> Iterator[StreamEventUnion]:
+    def _normalize_stream_event(self, event, state: _StreamState | None = None) -> Iterator[StreamEventUnion]:
+        if state is None:
+            state = _StreamState()
+
         match event.type:
             case "message_start":
                 yield ResponseStartedEvent(raw_event=event)
 
             case "content_block_start" if event.content_block.type == "tool_use":
                 yield ToolCallStartedEvent(
+                    call_id=event.content_block.id,
+                    name=event.content_block.name,
+                    output_index=event.index,
+                    raw_event=event
+                )
+
+            case "content_block_start" if event.content_block.type == "server_tool_use":
+                state.server_tool_indexes.add(event.index)
+                yield ServerToolCallStartedEvent(
                     call_id=event.content_block.id,
                     name=event.content_block.name,
                     output_index=event.index,
@@ -650,9 +781,31 @@ class AnthropicAdapter(Adapter):
                     raw_event=event
                 )
 
-            case "content_block_delta" if event.delta.type == "input_json_delta":
+            # server tool input isn't function arguments; it stays a CustomProviderEvent
+            case "content_block_delta" if event.delta.type == "input_json_delta" and event.index not in state.server_tool_indexes:
                 yield FunctionCallArgumentDeltaEvent(
                     delta=event.delta.partial_json,
+                    output_index=event.index,
+                    raw_event=event
+                )
+
+            # a web search call is done when its result arrives; output_item.done then carries both blocks
+            case "content_block_stop" if (
+                getattr(event, "content_block", None) is not None
+                and event.content_block.type == "server_tool_use"
+                and event.content_block.name == "web_search"
+            ):
+                state.web_search_calls[event.content_block.id] = event.content_block
+
+            case "content_block_stop" if (
+                getattr(event, "content_block", None) is not None
+                and event.content_block.type == "web_search_tool_result"
+            ):
+                yield OutputItemCompletedEvent(
+                    item=self._web_search_item(
+                        state.web_search_calls.pop(event.content_block.tool_use_id, None),
+                        event.content_block,
+                    ),
                     output_index=event.index,
                     raw_event=event
                 )
@@ -698,10 +851,12 @@ class AnthropicAdapter(Adapter):
 
         messages_api, kwargs = self._messages_api(self._build_request_kwargs(request))
 
+        state = _StreamState()
+
         with messages_api.stream(**kwargs) as stream:
             try:
                 for raw_event in stream:
-                    yield from self._normalize_stream_event(raw_event)
+                    yield from self._normalize_stream_event(raw_event, state)
             except APIStatusError as exc:
                 # error events sent mid-stream; errors before the stream starts are raised
                 error = self._response_error(exc)

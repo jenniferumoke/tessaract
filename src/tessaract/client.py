@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING, Any, Literal, TypeAlias, overload
 
 from .adapters import AnthropicAdapter, OpenAIAdapter
 from .providers import AnthropicProvider, OpenAIProvider
-from .tools.function import FunctionTool
+from .tools import Tool
 from .types.input_types import InputType, UserMessage
 from .types.output_types import AssistantMessage, OutputItem
 from .types.request import CacheOptions, ReasoningOptions, Request
@@ -50,7 +50,7 @@ class Tessaract:
         input: Input,
         reasoning: ReasoningOptions | None,
         max_tokens: int | None,
-        tools: list[FunctionTool],
+        tools: Sequence[Tool],
         request_options: dict[str, Any],
         stream: bool,
         instructions: str | None = None,
@@ -85,7 +85,7 @@ class Tessaract:
             model=model,
             input=all_items,
             reasoning=reasoning,
-            tools=tools,
+            tools=list(tools),
             provider_options=request_options,
             stream=stream,
             max_tokens=max_tokens,
@@ -99,7 +99,7 @@ class Tessaract:
             input: Input,
             stream: Literal[False] = False,
             reasoning: ReasoningOptions | None = None,
-            tools: list[FunctionTool] | None = None,
+            tools: Sequence[Tool] | None = None,
             request_options: dict[str, Any] | None = None,
             max_tokens: int | None = None,
             instructions: str | None = None,
@@ -113,7 +113,7 @@ class Tessaract:
             input: Input,
             stream: Literal[True],
             reasoning: ReasoningOptions | None = None,
-            tools: list[FunctionTool] | None = None,
+            tools: Sequence[Tool] | None = None,
             request_options: dict[str, Any] | None = None,
             max_tokens: int | None = None,
             instructions: str | None = None,
@@ -127,7 +127,7 @@ class Tessaract:
         input: Input,
         stream: bool,
         reasoning: ReasoningOptions | None = None,
-        tools: list[FunctionTool] | None = None,
+        tools: Sequence[Tool] | None = None,
         request_options: dict[str, Any] | None = None,
         max_tokens: int | None = None,
         instructions: str | None = None,
@@ -140,7 +140,7 @@ class Tessaract:
             input: Input,
             stream: bool = False,
             reasoning: ReasoningOptions | None = None,
-            tools: list[FunctionTool] | None = None,
+            tools: Sequence[Tool] | None = None,
             request_options: dict[str, Any] | None = None,
             max_tokens: int | None = None,
             instructions: str | None = None,
@@ -153,7 +153,8 @@ class Tessaract:
                 input: a string, or a list of strings, input items and output items from earlier responses.
                 stream: return an iterator of stream events instead of a Response.
                 reasoning: canonical reasoning options, mapped to each provider's native parameters.
-                tools: function tools the model may call.
+                tools: tools the model may use: FunctionTools you run, server tools the provider runs
+                    (WebSearchTool), and native definitions (ProviderTool).
                 request_options: native request parameters, merged in. Canonical parameters win.
                 max_tokens: the maximum number of output tokens. Sent to OpenAI as max_output_tokens
                     (omitted when None). Anthropic requires it: when None, the Anthropic adapter sends

@@ -6,6 +6,8 @@ Tessaract has one canonical way to define **function tools**. Each provider adap
 from tessaract import FunctionTool, InputSchema, Property
 ```
 
+Tools the provider runs on its own servers, such as web search, are covered in [Server tools](#server-tools).
+
 ## Defining a tool
 
 ```python
@@ -227,6 +229,85 @@ client.send(
 
 For Anthropic, use `request_options={"tool_choice": {"type": "auto"}}` (or `"any"`, `"none"`, `{"type": "tool", "name": "..."}`). Anthropic only allows `"auto"` and `"none"` while thinking is on.
 
+## Server tools
+
+Server tools run on the provider's servers, not in your code. The model calls them during its turn, and the results come back in the response, so you don't send a result back. `tools=` accepts them next to function tools, in any order:
+
+```python
+from tessaract import UserLocation, WebSearchTool
+
+tools = [
+    WebSearchTool(max_uses=5, user_location=UserLocation(country="NL", city="Amsterdam")),
+    get_weather_tool,
+]
+```
+
+### Web search
+
+`WebSearchTool` maps to OpenAI's `web_search` tool and Anthropic's `web_search_20250305` tool. Each search comes back as a `WebSearchCallOutputItem`:
+
+```python
+response = client.send(model="ant/claude-opus-5-5", input="What changed in Python 3.15?", tools=[WebSearchTool()])
+
+for item in response.output:
+    if item.type == "web_search_call":
+        print(item.status, item.queries)            # "completed", ["python 3.15 what's new"]
+        for source in item.sources:
+            print(source.title, source.url)
+
+    elif item.type == "assistant_message":
+        for part in item.content:
+            for citation in part.annotations:       # where the answer cites a source
+                print(citation.title, citation.source)
+
+print(response.usage.server_tool_requests)          # {"web_search": 1}
+```
+
+| Option | OpenAI | Anthropic |
+| --- | --- | --- |
+| `allowed_domains` | `filters.allowed_domains` | `allowed_domains` |
+| `blocked_domains` | not supported | `blocked_domains` |
+| `max_uses` | not supported | `max_uses` |
+| `user_location` | `user_location` | `user_location` |
+| `cache` | ignored (caching is automatic) | `cache_control` on the tool |
+
+An option the target provider doesn't support raises `UnsupportedToolOptionError` (a `ValueError`) instead of being dropped. `allowed_domains` and `blocked_domains` cannot be combined.
+
+Native fields go in `provider_options`, as on function tools. `"type"` pins the native tool version:
+
+```python
+WebSearchTool(provider_options={"search_context_size": "high"})     # OpenAI only
+WebSearchTool(provider_options={"type": "web_search_20260209"})     # a newer Anthropic version
+```
+
+Provider differences to know about:
+
+- OpenAI only returns sources when the request includes `web_search_call.action.sources`. The OpenAI adapter adds it to `include` when you send a `WebSearchTool`, next to any `include` values in `request_options`. OpenAI returns source URLs without titles.
+- OpenAI can also browse a result. Those calls have `action="open_page"` or `"find_in_page"`, with `url` (and `pattern`) set and no `queries`.
+- Anthropic returns each search as a `server_tool_use` block followed by a `web_search_tool_result` block. Tessaract merges the pair into one `WebSearchCallOutputItem`, and `raw` holds both blocks, which are replayed unchanged. When parallel searches interleave their blocks, each block stays its own item so the native order is kept.
+- A long server-tool turn on Anthropic can pause (`incomplete_reason` is `"paused"`). Append the output to the history and send it again to let the model continue. A search that hadn't finished has `status="in_progress"`.
+
+`Usage.server_tool_requests` counts server tool calls by tool name. Anthropic reports these counts; for OpenAI they are the `web_search_call` items in the output.
+
+### Other provider tools (`ProviderTool`)
+
+For a native tool without a canonical type yet, pass its native definition in a `ProviderTool`. It is sent unchanged, and its output comes back as `ProviderOutputItem`s, which replay through the history like any other item:
+
+```python
+from tessaract import ProviderTool
+
+web_fetch = ProviderTool(
+    provider="anthropic",
+    definition={"type": "web_fetch_20250910", "name": "web_fetch", "max_uses": 3},
+)
+```
+
+`provider` is the provider the definition was written for. Sending a `ProviderTool` to a model from a different provider raises `ValueError`.
+
+Native tools in `request_options={"tools": [...]}` are also sent when `tools=` is empty. When `tools=` is set, it wins.
+
 ## Streaming tool calls
 
-When streaming, a `tool_call.started` event (with `call_id` and `name`) fires as soon as the model starts a call. The arguments then arrive as `tool_arguments.delta` events, which hold raw JSON fragments. The fully parsed call arrives in an `output_item.done` event and in the final `response.completed` event. In most cases, act on the completed items and don't parse the deltas. See [Streaming](streaming.md).
+When streaming, a `tool_call.started` event (with `call_id` and `name`) fires as soon as the model starts a call. The arguments then arrive as `tool_arguments.delta` events, which hold raw JSON fragments. The fully parsed call arrives in an `output_item.done` event and in the final `response.completed` event. In most cases, act on the completed items and don't parse the deltas.
+
+For server tools, a `server_tool_call.started` event (with `call_id` and `name`, e.g. `"web_search"`) fires when the call starts, and the finished call arrives in `output_item.done`. Server tool input never arrives as `tool_arguments.delta` events. See [Streaming](streaming.md).
