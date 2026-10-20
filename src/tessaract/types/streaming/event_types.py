@@ -92,11 +92,17 @@ class FunctionCallArgumentDeltaEvent(BaseModel):
     )
 
 class ToolCallStartedEvent(BaseModel):
+    '''The model started a call to a tool your code runs.
+
+        call_type is the type of the output item the call becomes. name is the function name for
+        function calls, and "computer" or "shell" for those tools.
+    '''
     type: Literal["tool_call.started"] = "tool_call.started"
 
     call_id: str
     name: str
     output_index: int
+    call_type: Literal["function_call", "computer_call", "shell_call"] = "function_call"
 
     raw_event: Any | None = Field(
         default=None,

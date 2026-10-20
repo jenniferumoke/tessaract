@@ -2,6 +2,8 @@ from typing import Any, Literal, TypeAlias
 
 from pydantic import BaseModel, Field
 
+from .computer_actions import ComputerAction
+
 class OutputItem(BaseModel):
     raw: Any
 
@@ -73,6 +75,44 @@ class WebSearchCallOutputItem(OutputItem):
     error: str | None = None
     provider: Literal["anthropic", "openai"]
 
+class SafetyCheck(BaseModel):
+    '''A check the provider wants you to confirm before running a computer call (OpenAI only).
+
+        To go ahead, pass the checks back in ComputerToolResult.acknowledged_safety_checks.
+    '''
+    id: str
+    code: str | None = None
+    message: str | None = None
+
+class ComputerCallOutputItem(OutputItem):
+    '''Computer actions for your code to run, in order. Answer with a ComputerToolResult.
+
+        OpenAI can batch several actions into one call. Anthropic sends one action per call, and
+        often several calls per turn; every call needs its own result.
+    '''
+    type: Literal["computer_call"] = "computer_call"
+    call_id: str
+    actions: list[ComputerAction]
+    status: Literal["in_progress", "completed", "incomplete"] | None = None
+    safety_checks: list[SafetyCheck] = Field(default_factory=list)
+    provider: Literal["anthropic", "openai"]
+
+class ShellCallOutputItem(OutputItem):
+    '''Shell commands for your code to run, in order. Answer with a ShellToolResult.
+
+        commands: OpenAI can send several; Anthropic sends one
+        timeout_ms / max_output_length: limits OpenAI asks you to apply
+        restart: Anthropic asks you to restart the shell session; commands is empty
+    '''
+    type: Literal["shell_call"] = "shell_call"
+    call_id: str
+    commands: list[str] = Field(default_factory=list)
+    timeout_ms: int | None = None
+    max_output_length: int | None = None
+    restart: bool = False
+    status: Literal["in_progress", "completed", "incomplete"] | None = None
+    provider: Literal["anthropic", "openai"]
+
 class ProviderOutputItem(OutputItem):
     type: Literal["provider_output"] = "provider_output"
     provider_type: str
@@ -82,6 +122,8 @@ OutputType: TypeAlias = (
     ReasoningOutputItem | 
     FunctionCallOutputItem | 
     WebSearchCallOutputItem |
+    ComputerCallOutputItem |
+    ShellCallOutputItem |
     TextOutputItem | 
     ProviderOutputItem
     )

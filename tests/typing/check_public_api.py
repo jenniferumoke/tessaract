@@ -92,3 +92,41 @@ def send_with_server_tools(client: Tessaract) -> None:
     )
     if response.usage and response.usage.server_tool_requests:
         print(response.usage.server_tool_requests.get("web_search"))
+
+
+def run_client_tools(client: Tessaract, history: list) -> None:
+    from tessaract import (
+        ComputerToolResult,
+        ComputerUseTool,
+        ShellCommandOutput,
+        ShellTool,
+        ShellToolResult,
+    )
+
+    response = client.send(model="ant/m", input=history, tools=[ComputerUseTool(), ShellTool()])
+    history.extend(response.output)
+
+    for item in response.output:
+        if item.type == "computer_call":
+            for action in item.actions:
+                if action.type == "click":
+                    print(action.x, action.y, action.button, action.clicks, action.modifiers)
+                elif action.type == "scroll":
+                    print(action.dx, action.dy, action.unit)
+                elif action.type == "type":
+                    print(action.text)
+                elif action.type == "provider_action":
+                    print(action.provider_type, action.payload)
+            history.append(ComputerToolResult(
+                call_id=item.call_id, screenshot=b"png", acknowledged_safety_checks=item.safety_checks,
+            ))
+        elif item.type == "shell_call":
+            print(item.commands, item.timeout_ms, item.restart)
+            history.append(ShellToolResult(
+                call_id=item.call_id, output=[ShellCommandOutput(stdout="ok") for _ in item.commands],
+                max_output_length=item.max_output_length,
+            ))
+
+    for event in client.send(model="ant/m", input=history, tools=[ShellTool()], stream=True):
+        if event.type == "tool_call.started" and event.call_type == "shell_call":
+            print(event.call_id, event.name)

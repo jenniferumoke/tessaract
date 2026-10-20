@@ -1,3 +1,4 @@
+import base64
 import json
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
@@ -16,16 +17,24 @@ from ..adapter import (
 
 from ...providers.anthropic_provider import AnthropicProvider
 
+from pydantic import ValidationError
+
+from ...tools.computer import ComputerUseTool
 from ...tools.function import InputSchema, Property
+from ...tools.shell import ShellTool
 from ...tools.web_search import WebSearchTool
+from ...types import computer_actions as actions
+from ...types.input_types import ComputerToolResult, ProviderToolResult, ShellToolResult
 from ...types.output_types import (
     Annotation,
     AssistantMessage,
+    ComputerCallOutputItem,
     FunctionCallOutputItem,
     OutputItem,
     OutputType,
     ProviderOutputItem,
     ReasoningOutputItem,
+    ShellCallOutputItem,
     TextOutputItem,
     WebSearchCallOutputItem,
     WebSource,
@@ -70,6 +79,23 @@ _STREAM_HELPER_EVENTS = {"text", "thinking", "input_json", "signature", "citatio
 # The web search tool version sent when provider_options doesn't pin one. It works on every current model.
 DEFAULT_WEB_SEARCH_TOOL_TYPE = "web_search_20250305"
 
+# Client tool versions sent when provider_options doesn't pin one
+DEFAULT_COMPUTER_TOOLSET_TYPE = "computer_toolset_20260801"
+DEFAULT_BASH_TOOL_TYPE = "bash_20250124"
+
+# Computer action tool_use blocks carry this toolset_name; their name is the member, e.g. "left_click"
+COMPUTER_TOOLSET_NAME = "computer"
+
+_CLICK_MEMBERS: dict[str, tuple[actions.MouseButton, int]] = {
+    "left_click": ("left", 1),
+    "right_click": ("right", 1),
+    "middle_click": ("middle", 1),
+    "double_click": ("left", 2),
+    "triple_click": ("left", 3),
+}
+
+_SCROLL_DIRECTIONS = {"up": (0, -1), "down": (0, 1), "left": (-1, 0), "right": (1, 0)}
+
 # ServerToolUsage fields, by the tool name used in Usage.server_tool_requests
 _SERVER_TOOL_USAGE_FIELDS = {"web_search": "web_search_requests", "web_fetch": "web_fetch_requests"}
 
@@ -81,6 +107,8 @@ class _StreamState:
     server_tool_indexes: set[int] = field(default_factory=set)
     # finished web search server_tool_use blocks, by id, waiting for their result block
     web_search_calls: dict[str, Any] = field(default_factory=dict)
+    # the request declared a ShellTool, so bash tool_use blocks are shell calls
+    shell_tool: bool = False
 
 
 class AnthropicAdapter(Adapter):
@@ -389,6 +417,97 @@ class AnthropicAdapter(Adapter):
 
         return {**tool.provider_options, **native}
 
+    def map_computer_use_tool(self, tool: ComputerUseTool) -> dict[str, Any]:
+        tool_type = tool.provider_options.get("type", DEFAULT_COMPUTER_TOOLSET_TYPE)
+
+        if not tool_type.startswith("computer_toolset_"):
+            raise ValueError(
+                f"ComputerUseTool maps to Anthropic's computer toolset, not {tool_type!r}, whose calls have "
+                "a different shape. Use a ProviderTool for earlier computer tool versions."
+            )
+
+        native: dict[str, Any] = {"type": tool_type}
+
+        # a cache_control in provider_options is kept, as on other blocks
+        if tool.cache and "cache_control" not in tool.provider_options:
+            native["cache_control"] = {"type": "ephemeral"}
+
+        return {**tool.provider_options, **native}
+
+    def map_shell_tool(self, tool: ShellTool) -> dict[str, Any]:
+        native: dict[str, Any] = {
+            "type": tool.provider_options.get("type", DEFAULT_BASH_TOOL_TYPE),
+            "name": "bash",
+        }
+
+        if tool.cache and "cache_control" not in tool.provider_options:
+            native["cache_control"] = {"type": "ephemeral"}
+
+        return {**tool.provider_options, **native}
+
+    def _tool_result_block(self, call_id: str, content, is_error: bool, cache: bool, provider_options: dict) -> dict:
+        canonical_keys = {"type", "tool_use_id", "content", "is_error"}
+        block = {
+            **{key: value for key, value in provider_options.items() if key not in canonical_keys},
+            "type": "tool_result",
+            "tool_use_id": call_id,
+            "content": content,
+        }
+
+        if is_error:
+            block["is_error"] = True
+
+        return self._with_cache_control(block) if cache else block
+
+    def map_computer_tool_result(self, item: ComputerToolResult):
+        content: list[dict[str, Any]] = []
+
+        if item.screenshot is not None:
+            content.append({
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": "image/png",
+                    "data": base64.b64encode(item.screenshot).decode("ascii"),
+                },
+            })
+
+        if item.output or not content:
+            content.append({"type": "text", "text": item.output or "OK"})
+
+        block = self._tool_result_block(item.call_id, content, item.is_error, item.cache, item.provider_options)
+        # every computer action result must name the toolset of its tool_use block
+        block["toolset_name"] = COMPUTER_TOOLSET_NAME
+
+        return {"role": "user", "content": [block]}
+
+    def _shell_output_text(self, item: ShellToolResult) -> str:
+        if not item.output:
+            return "tool has been restarted."
+
+        parts = []
+        for output in item.output:
+            # bash interleaves stderr with stdout; the separate streams are sent one after the other
+            text = "\n".join(stream for stream in (output.stdout, output.stderr) if stream)
+            if output.timed_out:
+                text = f"{text}\nCommand timed out." if text else "Command timed out."
+            elif output.exit_code != 0:
+                text = f"{text}\nExit code: {output.exit_code}" if text else f"Exit code: {output.exit_code}"
+            parts.append(text or "(no output)")
+
+        return "\n".join(parts)
+
+    def map_shell_tool_result(self, item: ShellToolResult):
+        block = self._tool_result_block(
+            item.call_id, self._shell_output_text(item), item.is_error, item.cache, item.provider_options,
+        )
+        return {"role": "user", "content": [block]}
+
+    def map_provider_tool_result(self, item: ProviderToolResult):
+        native = super().map_provider_tool_result(item)
+        # a content block such as a tool_result goes in a user turn; a full message is sent as is
+        return native if "role" in native else {"role": "user", "content": [native]}
+
     def _as_blocks(self, content) -> list:
         if isinstance(content, str):
             return [{"type": "text", "text": content}]
@@ -529,7 +648,7 @@ class AnthropicAdapter(Adapter):
             provider_metadata=citation.model_dump(mode="json"),
         )
 
-    def _normalize_output_item(self, content_block) -> OutputType:
+    def _normalize_output_item(self, content_block, shell_tool: bool = False) -> OutputType:
         match content_block.type:
             case "text":
                 # raw is the list of native text blocks, since one message can span several blocks
@@ -555,6 +674,24 @@ class AnthropicAdapter(Adapter):
                     text=content_block.thinking
                 )
 
+            case "tool_use" if getattr(content_block, "toolset_name", None) == COMPUTER_TOOLSET_NAME:
+                return ComputerCallOutputItem(
+                    raw=content_block,
+                    provider="anthropic",
+                    call_id=content_block.id,
+                    actions=[self._normalize_computer_action(content_block.name, dict(content_block.input))],
+                )
+
+            case "tool_use" if shell_tool and content_block.name == "bash":
+                command = content_block.input.get("command")
+                return ShellCallOutputItem(
+                    raw=content_block,
+                    provider="anthropic",
+                    call_id=content_block.id,
+                    commands=[command] if isinstance(command, str) else [],
+                    restart=bool(content_block.input.get("restart")),
+                )
+
             case "tool_use":
                 return FunctionCallOutputItem(
                     raw=content_block,
@@ -575,6 +712,62 @@ class AnthropicAdapter(Adapter):
                     provider_type=content_block.type,
                     raw=content_block
                 )
+
+    def _keys(self, text) -> list[str]:
+        # Anthropic joins keys with "+", e.g. "ctrl+shift"; a lone "+" is the plus key
+        if not text:
+            return []
+        return [text] if text == "+" else text.split("+")
+
+    def _normalize_computer_action(self, member: str, payload: dict[str, Any]) -> actions.ComputerAction:
+        coordinate: list[Any] = payload.get("coordinate") or [None, None]
+        modifiers = self._keys(payload.get("text"))
+
+        try:
+            match member:
+                case _ if member in _CLICK_MEMBERS:
+                    button, clicks = _CLICK_MEMBERS[member]
+                    return actions.Click(
+                        x=coordinate[0], y=coordinate[1], button=button, clicks=clicks, modifiers=modifiers,
+                    )
+                case "left_click_drag":
+                    start = payload["start_coordinate"]
+                    return actions.Drag(
+                        path=[actions.Point(x=start[0], y=start[1]), actions.Point(x=coordinate[0], y=coordinate[1])],
+                        modifiers=modifiers,
+                    )
+                case "mouse_move":
+                    return actions.MoveMouse(x=coordinate[0], y=coordinate[1])
+                case "left_mouse_down":
+                    return actions.MouseDown()
+                case "left_mouse_up":
+                    return actions.MouseUp()
+                case "scroll":
+                    step_x, step_y = _SCROLL_DIRECTIONS[payload["scroll_direction"]]
+                    amount = payload["scroll_amount"]
+                    return actions.Scroll(
+                        x=coordinate[0], y=coordinate[1], dx=step_x * amount, dy=step_y * amount,
+                        unit="clicks", modifiers=modifiers,
+                    )
+                case "type":
+                    return actions.TypeText(text=payload["text"])
+                case "key":
+                    return actions.KeyPress(keys=modifiers, repeat=payload.get("repeat", 1))
+                case "hold_key":
+                    return actions.HoldKey(keys=modifiers, duration=payload["duration"])
+                case "wait":
+                    return actions.Wait(duration=payload["duration"])
+                case "screenshot":
+                    return actions.Screenshot()
+                case "zoom":
+                    return actions.Zoom(region=tuple(payload["region"]))
+                case "cursor_position":
+                    return actions.CursorPosition()
+        except (KeyError, IndexError, TypeError, ValidationError):
+            pass
+
+        # a member added in a newer toolset version, or one whose input changed, keeps its native payload
+        return actions.ProviderComputerAction(provider_type=member, payload=payload)
 
     def _web_search_item(self, call_block, result_block) -> WebSearchCallOutputItem:
         '''Builds one web search call from its server_tool_use block, its result block, or both.
@@ -619,13 +812,13 @@ class AnthropicAdapter(Adapter):
     def _text_parts(self, message: AssistantMessage) -> list[TextOutputItem]:
         return message.content if isinstance(message.content, list) else [message.content]
 
-    def _normalize_output(self, output_items) -> list[OutputType]:
+    def _normalize_output(self, output_items, shell_tool: bool = False) -> list[OutputType]:
         output: list[OutputType] = []
         # web search calls by id, so a result that isn't next to its call still gets the queries
         web_search_calls: dict[str, WebSearchCallOutputItem] = {}
 
         for block in output_items:
-            item = self._normalize_output_item(block)
+            item = self._normalize_output_item(block, shell_tool)
             previous = output[-1] if output else None
 
             if isinstance(item, WebSearchCallOutputItem) and block.type == "server_tool_use":
@@ -719,7 +912,7 @@ class AnthropicAdapter(Adapter):
             case _:
                 return None, None
 
-    def _normalize_response(self, raw_response) -> AnthropicResponse:
+    def _normalize_response(self, raw_response, shell_tool: bool = False) -> AnthropicResponse:
         stop_reason = self._normalize_stop_reason(raw_response.stop_reason)
         status, incomplete_reason = self._normalize_status(stop_reason)
 
@@ -729,7 +922,7 @@ class AnthropicAdapter(Adapter):
             status=status,
             incomplete_reason=incomplete_reason,
             stop_reason=stop_reason,
-            output=self._normalize_output(raw_response.content),
+            output=self._normalize_output(raw_response.content, shell_tool),
             usage=self._normalize_usage(raw_response.usage),
             provider_usage=raw_response.usage,
             raw_response=raw_response
@@ -744,9 +937,15 @@ class AnthropicAdapter(Adapter):
                 yield ResponseStartedEvent(raw_event=event)
 
             case "content_block_start" if event.content_block.type == "tool_use":
+                call = self._normalize_output_item(event.content_block, state.shell_tool)
+                if isinstance(call, ComputerCallOutputItem | ShellCallOutputItem):
+                    name, call_type = ("computer" if call.type == "computer_call" else "shell"), call.type
+                else:
+                    name, call_type = event.content_block.name, "function_call"
                 yield ToolCallStartedEvent(
                     call_id=event.content_block.id,
-                    name=event.content_block.name,
+                    name=name,
+                    call_type=call_type,
                     output_index=event.index,
                     raw_event=event
                 )
@@ -813,14 +1012,14 @@ class AnthropicAdapter(Adapter):
             # MessageStream adds the finished block and message to these events
             case "content_block_stop" if getattr(event, "content_block", None) is not None:
                 yield OutputItemCompletedEvent(
-                    item=self._normalize_output_item(event.content_block),
+                    item=self._normalize_output_item(event.content_block, state.shell_tool),
                     output_index=event.index,
                     raw_event=event
                 )
 
             case "message_stop" if getattr(event, "message", None) is not None:
                 yield ResponseCompletedEvent(
-                    response=self._normalize_response(event.message),
+                    response=self._normalize_response(event.message, state.shell_tool),
                     raw_event=event
                 )
 
@@ -839,19 +1038,22 @@ class AnthropicAdapter(Adapter):
         code = error.get("type") if isinstance(error, dict) else None
         return ResponseError(message=getattr(exc, "message", None) or str(exc), code=code)
 
+    def _declares_shell_tool(self, request: Request) -> bool:
+        return any(isinstance(tool, ShellTool) for tool in request.tools or [])
+
     def generate_sync(self, request: Request) -> AnthropicResponse:
         messages_api, kwargs = self._messages_api(self._build_request_kwargs(request))
 
         _raw_response = messages_api.create(**kwargs, stream=False)
 
-        return self._normalize_response(_raw_response)
+        return self._normalize_response(_raw_response, self._declares_shell_tool(request))
 
     def generate_stream(self, request: Request) -> Iterator[StreamEventUnion]:
         from anthropic import APIStatusError
 
         messages_api, kwargs = self._messages_api(self._build_request_kwargs(request))
 
-        state = _StreamState()
+        state = _StreamState(shell_tool=self._declares_shell_tool(request))
 
         with messages_api.stream(**kwargs) as stream:
             try:

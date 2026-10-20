@@ -30,6 +30,7 @@ More concretely, Tessaract exposes a **canonical model of the LLM ecosystem**: r
 
 - **Provider prefixes.** Register a provider under a prefix and address models as `"<prefix>/<model>"`, e.g. `"oai/gpt-5.6-luna"`.
 - **Canonical tools.** Define function tools once with `FunctionTool` / `InputSchema` / `Property`, including nested objects, arrays, enums and nullable fields. The adapter emits the provider's native schema.
+- **Computer use and shell.** `ComputerUseTool` and `ShellTool` give the model a computer or shell your code runs. Actions come back as one canonical set (`click`, `type`, `scroll`, …) on both providers, and you answer with `ComputerToolResult` / `ShellToolResult`.
 - **Server tools.** Add web search with `WebSearchTool`, next to your function tools. Searches come back as typed `WebSearchCallOutputItem`s with their queries and sources. Other native tools work through `ProviderTool`.
 - **Canonical reasoning.** Control effort and summaries with `ReasoningOptions`; read reasoning back as `ReasoningOutputItem`s.
 - **Typed output.** Responses contain `AssistantMessage`, `ReasoningOutputItem`, `FunctionCallOutputItem` and `ProviderOutputItem` objects. Function-call arguments are already parsed into a `dict`.
@@ -222,11 +223,13 @@ The documentation site is [tessaractai.com](https://tessaractai.com/).
 | --- | --- |
 | [Getting started](https://tessaractai.com/getting-started/) | Installing, configuring providers, sending your first request, and building multi-turn history |
 | [Building an agent](https://tessaractai.com/building-an-agent/) | A step-by-step tutorial for an agent with reasoning and tool calling, both synchronous and streaming |
-| [Tool calling](https://tessaractai.com/tool-calling/) | `FunctionTool`, `InputSchema`, `Property`, strict mode, tool results and `provider_options` |
+| [Tool calling](https://tessaractai.com/tool-calling/) | `FunctionTool`, `InputSchema`, `Property`, strict mode, tool results, `provider_options`, server tools (web search), and computer use and shell |
 | [Reasoning](https://tessaractai.com/reasoning/) | `ReasoningOptions`, effort levels, summaries, and reading and preserving reasoning items |
 | [Streaming](https://tessaractai.com/streaming/) | Every canonical stream event, and how to build a streaming agent loop |
 | [API reference](https://tessaractai.com/api-reference/) | Every public class, field and method |
 | [Architecture](https://tessaractai.com/architecture/) | Canonical types, adapters and providers, and how to add a new provider |
+
+Changes between releases, including native items that gained canonical types, are listed in [CHANGELOG.md](CHANGELOG.md).
 
 ---
 
@@ -262,6 +265,7 @@ src/tessaract/
 - Multi-turn conversations
 - Function tools with parallel calls
 - Web search via `WebSearchTool`, and any native tool via `ProviderTool`
+- Computer use (`computer`) via `ComputerUseTool`, and a local shell via `ShellTool`
 - Reasoning effort and summaries
 - Pass-through request options
 - Prompt caching via `CacheOptions` (mode and key) and `cache=True` breakpoints
@@ -273,6 +277,7 @@ src/tessaract/
 - Multi-turn conversations, with automatic grouping into user/assistant turns
 - Function tools with parallel calls, and native tool-result error flags
 - Web search via `WebSearchTool`, and any native server tool (e.g. web fetch, code execution) via `ProviderTool`
+- Computer use (`computer_toolset_20260801`) via `ComputerUseTool`, and bash via `ShellTool`
 - Adaptive, budgeted and between-tools thinking, effort, and thinking display (including beta `updates`)
 - System prompts via `instructions=` or `SystemPrompt`, and prompt caching via `CacheOptions`, `cache=True` breakpoints or `cache_control` pass-through
 - Token usage on `Response`, normalized so `input_tokens` includes cached tokens

@@ -19,7 +19,7 @@ Every event has a `type` string that you can branch on, and a `raw_event` field 
 | `reasoning_summary.delta` | `ReasoningSummaryDeltaEvent` | A chunk of reasoning summary text arrives | `delta`, `item_id`, `output_index` |
 | `reasoning_text.delta` | `ReasoningTextDeltaEvent` | A chunk of raw reasoning text arrives, on models that expose it | `delta`, `item_id`, `output_index` |
 | `text.delta` | `TextDeltaEvent` | A chunk of assistant text arrives | `delta`, `output_index`, `content_index`, `provider` |
-| `tool_call.started` | `ToolCallStartedEvent` | The model starts a function call, before its arguments stream in | `call_id`, `name`, `output_index` |
+| `tool_call.started` | `ToolCallStartedEvent` | The model starts a call your code runs (a function, computer or shell call), before its arguments stream in | `call_id`, `name`, `call_type` (the output item type: `"function_call"`, `"computer_call"` or `"shell_call"`), `output_index` |
 | `server_tool_call.started` | `ServerToolCallStartedEvent` | The model starts a call to a tool the provider runs, such as web search | `call_id`, `name`, `output_index` |
 | `tool_arguments.delta` | `FunctionCallArgumentDeltaEvent` | A chunk of a function call's JSON arguments arrives | `delta`, `output_index` |
 | `output_item.done` | `OutputItemCompletedEvent` | An output item is complete | `item` (a fully typed [output item](api-reference.md#output-items)) |
@@ -35,7 +35,7 @@ Every event has a `type` string that you can branch on, and a `raw_event` field 
 | --- | --- |
 | `message_start` | `response_started` |
 | `content_block_start` for a `thinking` block | `reasoning.started` |
-| `content_block_start` for a `tool_use` block | `tool_call.started` |
+| `content_block_start` for a `tool_use` block | `tool_call.started`; `call_type` is `"computer_call"` for blocks with `toolset_name: "computer"`, and `"shell_call"` for `bash` when the request has a `ShellTool` |
 | `content_block_start` for a `server_tool_use` block | `server_tool_call.started` |
 | `thinking_delta` | `reasoning_summary.delta` (Anthropic thinking is summarized) |
 | `text_delta` | `text.delta` |

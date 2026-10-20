@@ -1,3 +1,4 @@
+import base64
 import json
 from collections.abc import Iterator, Sequence
 from typing import Any, cast
@@ -7,13 +8,20 @@ from openai.types.shared_params import Reasoning as OpenAIReasoningParams
 
 from ...errors import UnsupportedToolOptionError
 from ...providers.openai_provider import OpenAIProvider
+from ...tools.computer import ComputerUseTool
 from ...tools.function import InputSchema, Property
+from ...tools.shell import ShellTool
 from ...tools.web_search import WebSearchTool
+from ...types import computer_actions as actions
+from ...types.input_types import ComputerToolResult, ShellToolResult
 from ...types.output_types import (
     Annotation,
     AssistantMessage,
+    ComputerCallOutputItem,
     FunctionCallOutputItem,
     ProviderOutputItem,
+    SafetyCheck,
+    ShellCallOutputItem,
     OutputType,
     ReasoningOutputItem,
     TextOutputItem,
@@ -63,6 +71,12 @@ _SERVER_TOOL_CALL_ITEMS = {
     "file_search_call": "file_search",
     "code_interpreter_call": "code_interpreter",
     "image_generation_call": "image_generation",
+}
+
+
+# OpenAI mouse button names; OpenAI calls the middle button "wheel"
+_MOUSE_BUTTONS: dict[str, actions.MouseButton] = {
+    "left": "left", "right": "right", "wheel": "middle", "back": "back", "forward": "forward",
 }
 
 
@@ -252,6 +266,77 @@ class OpenAIAdapter(Adapter):
         # tool.cache is ignored, as on function tools: OpenAI caches tool definitions automatically
         return {**tool.provider_options, **native}
 
+    def map_computer_use_tool(self, tool: ComputerUseTool) -> dict[str, Any]:
+        # tool.cache is ignored, as on function tools: OpenAI caches tool definitions automatically
+        return {**tool.provider_options, "type": tool.provider_options.get("type", "computer")}
+
+    def map_shell_tool(self, tool: ShellTool) -> dict[str, Any]:
+        environment = tool.provider_options.get("environment", {"type": "local"})
+
+        if not isinstance(environment, dict) or environment.get("type") != "local":
+            raise ValueError(
+                "ShellTool runs commands in your environment, so its OpenAI environment must be "
+                '{"type": "local", ...}. For OpenAI\'s hosted shell, use a ProviderTool.'
+            )
+
+        return {**tool.provider_options, "type": "shell", "environment": environment}
+
+    def _extra_fields(self, provider_options: dict[str, Any], canonical_keys: set[str]) -> dict[str, Any]:
+        return {key: value for key, value in provider_options.items() if key not in canonical_keys}
+
+    def map_computer_tool_result(self, item: ComputerToolResult) -> dict[str, Any]:
+        # item.output is ignored: computer_call_output only carries a screenshot, and OpenAI never
+        # sends the cursor_position action that needs text. item.cache is ignored, as on tool definitions.
+        if item.is_error:
+            raise UnsupportedToolOptionError(
+                "OpenAI computer_call_output has no error flag. Send a screenshot of the current "
+                "screen instead, so the model can see what happened."
+            )
+
+        if item.screenshot is None:
+            raise ValueError("OpenAI needs a screenshot in every ComputerToolResult.")
+
+        native: dict[str, Any] = {
+            "type": "computer_call_output",
+            "call_id": item.call_id,
+            "output": {
+                "type": "computer_screenshot",
+                "image_url": "data:image/png;base64," + base64.b64encode(item.screenshot).decode("ascii"),
+            },
+        }
+
+        if item.acknowledged_safety_checks:
+            native["acknowledged_safety_checks"] = [
+                check.model_dump(exclude_none=True) for check in item.acknowledged_safety_checks
+            ]
+
+        return {**self._extra_fields(item.provider_options, set(native)), **native}
+
+    def map_shell_tool_result(self, item: ShellToolResult) -> dict[str, Any]:
+        # item.cache is ignored: shell_call_output has no content parts to put a breakpoint on
+        if item.is_error:
+            raise UnsupportedToolOptionError(
+                "OpenAI shell_call_output has no error flag. Report what happened in stderr, with a non-zero exit_code."
+            )
+
+        native: dict[str, Any] = {
+            "type": "shell_call_output",
+            "call_id": item.call_id,
+            "output": [
+                {
+                    "stdout": output.stdout,
+                    "stderr": output.stderr,
+                    "outcome": {"type": "timeout"} if output.timed_out else {"type": "exit", "exit_code": output.exit_code},
+                }
+                for output in item.output
+            ],
+        }
+
+        if item.max_output_length is not None:
+            native["max_output_length"] = item.max_output_length
+
+        return {**self._extra_fields(item.provider_options, set(native)), **native}
+
     def _is_content_parts(self, result) -> bool:
         return isinstance(result, list) and all(
             isinstance(part, dict) and "type" in part for part in result
@@ -343,6 +428,21 @@ class OpenAIAdapter(Adapter):
             case "web_search_call":
                 return self._normalize_web_search_call(output_item)
 
+            case "computer_call":
+                return self._normalize_computer_call(output_item)
+
+            # a shell_call in a container ran on OpenAI's servers (a hosted shell ProviderTool)
+            case "shell_call" if self._is_local_shell(output_item):
+                return ShellCallOutputItem(
+                    raw=output_item,
+                    provider="openai",
+                    call_id=output_item.call_id,
+                    commands=list(output_item.action.commands),
+                    timeout_ms=output_item.action.timeout_ms,
+                    max_output_length=output_item.action.max_output_length,
+                    status=output_item.status,
+                )
+
             case _:
                 return ProviderOutputItem(raw=output_item, provider_type=output_item.type)
 
@@ -367,6 +467,60 @@ class OpenAIAdapter(Adapter):
             sources=[
                 WebSource(url=source.url)
                 for source in getattr(action, "sources", None) or []
+            ],
+        )
+
+    def _is_local_shell(self, item) -> bool:
+        # environment is None or local for ShellTool calls, and a container for the hosted shell
+        return getattr(getattr(item, "environment", None), "type", "local") == "local"
+
+    def _normalize_computer_action(self, action) -> actions.ComputerAction:
+        keys = list(getattr(action, "keys", None) or [])
+
+        try:
+            match action.type:
+                case "click":
+                    return actions.Click(
+                        x=action.x, y=action.y, button=_MOUSE_BUTTONS[action.button], modifiers=keys,
+                    )
+                case "double_click":
+                    return actions.Click(x=action.x, y=action.y, clicks=2, modifiers=keys)
+                case "drag":
+                    return actions.Drag(path=[actions.Point(x=p.x, y=p.y) for p in action.path], modifiers=keys)
+                case "keypress":
+                    return actions.KeyPress(keys=keys)
+                case "move":
+                    return actions.MoveMouse(x=action.x, y=action.y, modifiers=keys)
+                case "screenshot":
+                    return actions.Screenshot()
+                case "scroll":
+                    return actions.Scroll(
+                        x=action.x, y=action.y, dx=action.scroll_x, dy=action.scroll_y, unit="pixels", modifiers=keys,
+                    )
+                case "type":
+                    return actions.TypeText(text=action.text)
+                case "wait":
+                    return actions.Wait()
+        except (AttributeError, KeyError, ValueError):
+            pass
+
+        # a newer action type, or one whose fields changed, is kept with its native payload
+        return actions.ProviderComputerAction(provider_type=action.type, payload=action.model_dump(mode="json"))
+
+    def _normalize_computer_call(self, output_item) -> ComputerCallOutputItem:
+        native_actions = output_item.actions if output_item.actions is not None else (
+            [output_item.action] if output_item.action is not None else []
+        )
+
+        return ComputerCallOutputItem(
+            raw=output_item,
+            provider="openai",
+            call_id=output_item.call_id,
+            actions=[self._normalize_computer_action(action) for action in native_actions],
+            status=output_item.status,
+            safety_checks=[
+                SafetyCheck(id=check.id, code=check.code, message=check.message)
+                for check in output_item.pending_safety_checks or []
             ],
         )
 
@@ -407,6 +561,17 @@ class OpenAIAdapter(Adapter):
                 yield ToolCallStartedEvent(
                     call_id=event.item.call_id,
                     name=event.item.name,
+                    output_index=event.output_index,
+                    raw_event=event
+                )
+
+            case "response.output_item.added" if event.item.type == "computer_call" or (
+                event.item.type == "shell_call" and self._is_local_shell(event.item)
+            ):
+                yield ToolCallStartedEvent(
+                    call_id=event.item.call_id,
+                    name="computer" if event.item.type == "computer_call" else "shell",
+                    call_type=event.item.type,
                     output_index=event.output_index,
                     raw_event=event
                 )
