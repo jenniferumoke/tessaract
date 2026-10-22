@@ -33,8 +33,11 @@ Issues = "https://github.com/jenniferumoke/tessaract/issues"
 Documentation = "https://jenniferumoke.github.io/tessaract/"
 
 [build-system]
-requires = ["uv_build>=0.12.13, <0.13"]
+requires = ["uv_build>=0.13.5,<0.14"]
 build-backend = "uv_build"
+
+[tool.uv]
+required-version = ">=0.13.5"
 
 [dependency-groups]
 dev = [

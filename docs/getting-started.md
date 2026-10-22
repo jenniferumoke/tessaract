@@ -14,7 +14,7 @@ python -m pip install "tessaract[openai,anthropic]"   # both
 
 If you use uv, add it to your project with `uv add "tessaract[openai,anthropic]"`.
 
-To work from a checkout of this repository, run `uv sync --extra openai --extra anthropic` or `python -m pip install -e ".[openai,anthropic]"` from the repository root.
+To work from a checkout of this repository, run `uv sync --extra openai --extra anthropic` (the repository requires uv 0.13.5 or later; `uv self update` upgrades it) or `python -m pip install -e ".[openai,anthropic]"` from the repository root.
 
 Each extra installs that vendor's SDK. Tessaract imports an SDK only when you create its provider, so installing the core package alone is possible, but `OpenAIProvider` and `AnthropicProvider` raise an `ImportError` that names the missing extra.
 
