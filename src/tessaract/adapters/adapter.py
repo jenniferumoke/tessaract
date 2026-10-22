@@ -107,8 +107,14 @@ class Adapter:
                 native.append(self.map_shell_tool(tool))
             elif isinstance(tool, ProviderTool):
                 native.append(self.map_provider_tool(tool))
+            elif isinstance(tool, type):
+                # a tool class instead of an instance, e.g. tools=[WebSearchTool]
+                raise TypeError(f"Pass {tool.__name__}(), an instance, not the class {tool.__name__}.")
             else:
-                raise TypeError(f"Unsupported tool type: {type(tool).__name__}")
+                raise TypeError(
+                    f"Unsupported tool type: {type(tool).__name__}. Use FunctionTool, WebSearchTool, "
+                    "ComputerUseTool, ShellTool or ProviderTool."
+                )
 
         return native
 

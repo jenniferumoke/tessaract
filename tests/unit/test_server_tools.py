@@ -26,3 +26,19 @@ def test_user_location_fields_are_optional():
 def test_provider_tool_requires_a_known_provider():
     with pytest.raises(ValidationError):
         ProviderTool(provider="someone", definition={"type": "x"})
+
+@pytest.mark.parametrize("adapter", ["openai_adapter", "anthropic_adapter"])
+@pytest.mark.parametrize("tool_class", [WebSearchTool, ProviderTool])
+def test_a_tool_class_instead_of_an_instance_says_how_to_fix_it(request, adapter, tool_class):
+    name = tool_class.__name__
+
+    with pytest.raises(TypeError, match=rf"Pass {name}\(\), an instance, not the class {name}\."):
+        request.getfixturevalue(adapter).map_tools([tool_class])
+
+def test_a_tool_class_is_caught_through_send(client):
+    with pytest.raises(TypeError, match=r"Pass WebSearchTool\(\)"):
+        client.send(model="oai/gpt-test", input="hi", tools=[WebSearchTool])
+
+def test_an_unknown_tool_type_lists_the_accepted_types(openai_adapter):
+    with pytest.raises(TypeError, match="Unsupported tool type: dict. Use FunctionTool, WebSearchTool"):
+        openai_adapter.map_tools([{"type": "web_search"}])
