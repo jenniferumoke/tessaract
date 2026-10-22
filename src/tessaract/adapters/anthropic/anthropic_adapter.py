@@ -15,6 +15,7 @@ from ..adapter import (
     SystemPromptProtocol
 )
 
+from ...errors import UnsupportedToolOptionError
 from ...providers.anthropic_provider import AnthropicProvider
 
 from pydantic import ValidationError
@@ -435,6 +436,13 @@ class AnthropicAdapter(Adapter):
         return {**tool.provider_options, **native}
 
     def map_shell_tool(self, tool: ShellTool) -> dict[str, Any]:
+        if tool.environment != "local":
+            raise UnsupportedToolOptionError(
+                "Anthropic's bash tool only runs in your environment, so ShellTool(environment=ContainerEnvironment(...)) "
+                "is not supported. Anthropic runs commands in its own containers through the code execution tool; "
+                "use a ProviderTool for it."
+            )
+
         native: dict[str, Any] = {
             "type": tool.provider_options.get("type", DEFAULT_BASH_TOOL_TYPE),
             "name": "bash",

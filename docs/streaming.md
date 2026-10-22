@@ -20,7 +20,7 @@ Every event has a `type` string that you can branch on, and a `raw_event` field 
 | `reasoning_text.delta` | `ReasoningTextDeltaEvent` | A chunk of raw reasoning text arrives, on models that expose it | `delta`, `item_id`, `output_index` |
 | `text.delta` | `TextDeltaEvent` | A chunk of assistant text arrives | `delta`, `output_index`, `content_index`, `provider` |
 | `tool_call.started` | `ToolCallStartedEvent` | The model starts a call your code runs (a function, computer or shell call), before its arguments stream in | `call_id`, `name`, `call_type` (the output item type: `"function_call"`, `"computer_call"` or `"shell_call"`), `output_index` |
-| `server_tool_call.started` | `ServerToolCallStartedEvent` | The model starts a call to a tool the provider runs, such as web search | `call_id`, `name`, `output_index` |
+| `server_tool_call.started` | `ServerToolCallStartedEvent` | The model starts a call to a tool the provider runs, such as web search, or a shell command in a provider container (`name="shell"`) | `call_id`, `name`, `output_index` |
 | `tool_arguments.delta` | `FunctionCallArgumentDeltaEvent` | A chunk of a function call's JSON arguments arrives | `delta`, `output_index` |
 | `output_item.done` | `OutputItemCompletedEvent` | An output item is complete | `item` (a fully typed [output item](api-reference.md#output-items)) |
 | `response.completed` | `ResponseCompletedEvent` | The response is finished | `response` (a full `Response`) |

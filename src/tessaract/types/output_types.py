@@ -97,16 +97,31 @@ class ComputerCallOutputItem(OutputItem):
     safety_checks: list[SafetyCheck] = Field(default_factory=list)
     provider: Literal["anthropic", "openai"]
 
-class ShellCallOutputItem(OutputItem):
-    '''Shell commands for your code to run, in order. Answer with a ShellToolResult.
+class ShellCommandOutput(BaseModel):
+    '''What one shell command printed. exit_code is ignored when timed_out is True.'''
+    stdout: str = ""
+    stderr: str = ""
+    exit_code: int = 0
+    timed_out: bool = False
 
+class ShellCallOutputItem(OutputItem):
+    '''Shell commands, in order.
+
+        executed_by: "client" when your code runs them (a local ShellTool): answer with a ShellToolResult.
+            "provider" when the provider ran them in its container (OpenAI): output holds what they printed,
+            and you send nothing back.
         commands: OpenAI can send several; Anthropic sends one
+        output: one ShellCommandOutput per command, for provider calls. Empty while the call is still running.
         timeout_ms / max_output_length: limits OpenAI asks you to apply
         restart: Anthropic asks you to restart the shell session; commands is empty
+
+        A provider call's raw is the list of its shell_call and shell_call_output items, both replayed unchanged.
     '''
     type: Literal["shell_call"] = "shell_call"
     call_id: str
+    executed_by: Literal["client", "provider"] = "client"
     commands: list[str] = Field(default_factory=list)
+    output: list[ShellCommandOutput] = Field(default_factory=list)
     timeout_ms: int | None = None
     max_output_length: int | None = None
     restart: bool = False

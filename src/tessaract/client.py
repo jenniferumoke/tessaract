@@ -76,7 +76,12 @@ class Tessaract:
                     all_items.append(self.adapters[provider].map_assistant_message(message))
 
                 elif isinstance(message, OutputItem):
-                    all_items.append(self.adapters[provider].map_output_item(message))
+                    native = self.adapters[provider].map_output_item(message)
+                    # an item built from several native items, e.g. an OpenAI hosted shell call and its output
+                    if isinstance(native, list):
+                        all_items.extend(native)
+                    else:
+                        all_items.append(native)
 
                 else:
                     raise TypeError(f"Unsupported input type: {type(message).__name__}")

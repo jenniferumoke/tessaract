@@ -315,6 +315,8 @@ Computer use and shell are tools the provider defines but your code runs. The mo
 | `ComputerUseTool` | `computer` | `computer_toolset_20260801` | `ComputerCallOutputItem` (`"computer_call"`) | `ComputerToolResult` |
 | `ShellTool` | `shell` with a local environment | `bash_20250124` | `ShellCallOutputItem` (`"shell_call"`) | `ShellToolResult` |
 
+`ShellTool` can also run commands in a container the provider manages, so the provider executes them; see [Provider-managed shell](#provider-managed-shell).
+
 ### Computer use
 
 ```python
@@ -384,6 +386,9 @@ import subprocess
 from tessaract import ShellCommandOutput, ShellTool, ShellToolResult
 
 for call in (item for item in response.output if item.type == "shell_call"):
+    if call.executed_by == "provider":       # already ran in a provider container; nothing to send back
+        continue
+
     if call.restart:                         # Anthropic: restart your shell session
         shell = start_shell()
         history.append(ShellToolResult(call_id=call.call_id))
@@ -406,7 +411,40 @@ The model runs commands on your machine, so run them in a sandbox you control.
 - OpenAI receives each command's `stdout`, `stderr` and exit or timeout outcome. Pass the call's `max_output_length` back on the result. `is_error=True` raises `UnsupportedToolOptionError`; report failures in `stderr` with a non-zero `exit_code`.
 - Anthropic receives one text block: `stdout`, then `stderr`, then `Exit code: N` when it isn't 0 (or `Command timed out.`). A result with no output answers a restart. `is_error=True` sets Anthropic's error flag; use it when a command couldn't run at all.
 - On Anthropic, a `bash` tool call is only read as a `shell_call` when the request includes a `ShellTool`. Otherwise it stays a `function_call`, so a function tool of your own named `bash` keeps working.
-- On OpenAI, `provider_options={"environment": {...}}` can replace the local environment, e.g. to add skills. It must stay `{"type": "local", ...}`: a container environment runs commands on OpenAI's servers, so use a `ProviderTool` for the hosted shell. Its calls come back as `ProviderOutputItem`s.
+- On OpenAI, the fields of `provider_options={"environment": {...}}` are merged into the environment, e.g. to add skills.
+
+### Provider-managed shell
+
+With a `ContainerEnvironment`, the provider runs the commands in a container it manages. This is OpenAI's hosted shell:
+
+```python
+from tessaract import ContainerEnvironment, ShellTool
+
+tools = [ShellTool(environment=ContainerEnvironment(memory_limit="4g", allowed_domains=["pypi.org"]))]
+
+response = client.send(model="oai/gpt-6.1-sol", input="Which Python version is installed?", tools=tools)
+
+for call in (item for item in response.output if item.type == "shell_call"):
+    print(call.executed_by)                  # "provider"
+    for command, output in zip(call.commands, call.output):
+        print(command, output.exit_code, output.stdout)
+```
+
+These calls have `executed_by="provider"` and their commands' `output` already filled in. You send nothing back; append the output to the history as usual. OpenAI returns each call as a `shell_call` item followed by a `shell_call_output` item. Tessaract merges the pair into one `ShellCallOutputItem` whose `raw` holds both, and both are replayed unchanged. A call whose output hasn't arrived yet has an empty `output`.
+
+| `ContainerEnvironment` field | OpenAI |
+| --- | --- |
+| *(none set)* | `{"type": "container_auto"}`, a new container |
+| `container_id` | `{"type": "container_reference"}`: reuse a container. It cannot be combined with the fields below |
+| `file_ids` | `file_ids`, files copied into a new container |
+| `memory_limit` | `memory_limit`: `"1g"`, `"4g"`, `"16g"` or `"64g"` |
+| `allowed_domains` | `network_policy` `{"type": "allowlist"}` |
+| `network_disabled` | `network_policy` `{"type": "disabled"}` |
+| `provider_options` | merged into the environment, e.g. `skills`, or a `network_policy` with `domain_secrets` |
+
+Anthropic's `bash` tool only runs in your environment, so `ShellTool(environment=ContainerEnvironment(...))` raises `UnsupportedToolOptionError` on Anthropic. Anthropic runs commands in its own containers through its code execution tool, which you can use with a `ProviderTool`.
+
+When streaming, a provider-managed call starts with a `server_tool_call.started` event (`name="shell"`), not `tool_call.started`, and its `output_item.done` arrives with its output.
 
 ### Results for other provider tools (`ProviderToolResult`)
 

@@ -5,6 +5,7 @@ from .providers.openai_provider import OpenAIProvider
 from .errors import UnsupportedToolOptionError
 from .tools import (
     ComputerUseTool,
+    ContainerEnvironment,
     FunctionTool,
     InputSchema,
     Property,
@@ -30,6 +31,7 @@ __all__ = [
     "CacheOptions",
     "ComputerToolResult",
     "ComputerUseTool",
+    "ContainerEnvironment",
     "DEFAULT_ANTHROPIC_MAX_TOKENS",
     "FunctionTool",
     "FunctionToolResult",

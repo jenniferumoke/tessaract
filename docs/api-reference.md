@@ -245,12 +245,26 @@ Validation raises `ValueError` if `items` is set on a non-array type, if the obj
 
 ### `ShellTool`
 
-`tessaract.ShellTool` (a Pydantic model). Lets the model run shell commands your code runs. See [Shell](tool-calling.md#shell).
+`tessaract.ShellTool` (a Pydantic model). Lets the model run shell commands, in your environment or in a container the provider manages. See [Shell](tool-calling.md#shell).
 
 | Field | Type | Default |
 | --- | --- | --- |
+| `environment` | `"local" \| ContainerEnvironment` | `"local"`: your code runs the commands. A `ContainerEnvironment` lets the provider run them (OpenAI only; raises `UnsupportedToolOptionError` on Anthropic) |
 | `cache` | `bool` | `False`. Anthropic: `cache_control` on the tool definition. Ignored on OpenAI |
-| `provider_options` | `dict[str, Any]` | `{}`. Native tool fields; on OpenAI, `environment` must stay `{"type": "local", ...}` |
+| `provider_options` | `dict[str, Any]` | `{}`. Native tool fields; on OpenAI, the fields of `environment` are merged into the environment |
+
+### `ContainerEnvironment`
+
+`tessaract.ContainerEnvironment` (a Pydantic model). A container the provider manages. See [Provider-managed shell](tool-calling.md#provider-managed-shell).
+
+| Field | Type | Default |
+| --- | --- | --- |
+| `container_id` | `str \| None` | `None`. Reuse an existing container; cannot be combined with the fields below |
+| `file_ids` | `list[str] \| None` | `None` |
+| `memory_limit` | `"1g" \| "4g" \| "16g" \| "64g" \| None` | `None` |
+| `allowed_domains` | `list[str] \| None` | `None`. Cannot be combined with `network_disabled` |
+| `network_disabled` | `bool` | `False` |
+| `provider_options` | `dict[str, Any]` | `{}`. Native environment fields, e.g. `skills` |
 
 ### `Tool`
 
@@ -412,13 +426,13 @@ A `str` enum, in `tessaract.types.response`:
 | `ReasoningOutputItem` | `"reasoning"` | `id`, `text` (the summary), `content` (the raw reasoning), `raw` |
 | `FunctionCallOutputItem` | `"function_call"` | `call_id`, `name`, `arguments: dict`, `raw` |
 | `ComputerCallOutputItem` | `"computer_call"` | `call_id`, `actions: list[ComputerAction]` (see [the action table](tool-calling.md#computer-use)), `status`, `safety_checks: list[SafetyCheck]` (`id`, `code`, `message`; OpenAI only), `provider`, `raw` |
-| `ShellCallOutputItem` | `"shell_call"` | `call_id`, `commands: list[str]`, `timeout_ms`, `max_output_length` (OpenAI), `restart` (Anthropic), `status`, `provider`, `raw` |
+| `ShellCallOutputItem` | `"shell_call"` | `call_id`, `executed_by` (`"client"`: answer with a `ShellToolResult`; `"provider"`: it already ran), `commands: list[str]`, `output: list[ShellCommandOutput]` (provider calls), `timeout_ms`, `max_output_length` (OpenAI), `restart` (Anthropic), `status`, `provider`, `raw` |
 | `WebSearchCallOutputItem` | `"web_search_call"` | `call_id`, `status` (`"in_progress"`, `"searching"`, `"completed"` or `"failed"`), `action` (`"search"`, `"open_page"` or `"find_in_page"`), `queries: list[str]`, `url`, `pattern`, `sources: list[WebSource]` (`url`, `title`, `page_age`), `error`, `provider`, `raw` |
 | `ProviderOutputItem` | `"provider_output"` | `provider_type` (the native item type), `raw` |
 
 The OpenAI adapter returns an assistant message as a `ProviderOutputItem` (`provider_type="message"`) when it contains anything other than plain `output_text`, such as refusals or annotations and citations. It still replays correctly, and you can inspect it through `.raw`.
 
-The Anthropic adapter returns neighbouring text blocks as one `AssistantMessage` whose `raw` is the list of native text blocks. Thinking blocks become `ReasoningOutputItem`s with `id=None`. A web search's `server_tool_use` and `web_search_tool_result` blocks become one `WebSearchCallOutputItem` whose `raw` is the list of both blocks. A `tool_use` block with `toolset_name: "computer"` becomes a `ComputerCallOutputItem` with one action, and a `bash` `tool_use` block becomes a `ShellCallOutputItem` when the request has a `ShellTool`. `redacted_thinking`, other server tool blocks and any other block types become `ProviderOutputItem`s. Unknown OpenAI output item types are also returned as `ProviderOutputItem`s, and so are `shell_call` items from OpenAI's hosted shell (a container environment).
+The Anthropic adapter returns neighbouring text blocks as one `AssistantMessage` whose `raw` is the list of native text blocks. Thinking blocks become `ReasoningOutputItem`s with `id=None`. A web search's `server_tool_use` and `web_search_tool_result` blocks become one `WebSearchCallOutputItem` whose `raw` is the list of both blocks. A `tool_use` block with `toolset_name: "computer"` becomes a `ComputerCallOutputItem` with one action, and a `bash` `tool_use` block becomes a `ShellCallOutputItem` when the request has a `ShellTool`. `redacted_thinking`, other server tool blocks and any other block types become `ProviderOutputItem`s. Unknown OpenAI output item types are also returned as `ProviderOutputItem`s. An OpenAI `shell_call` in a container and its `shell_call_output` become one `ShellCallOutputItem` with `executed_by="provider"`, whose `raw` is the list of both items.
 
 `ProviderOutputItem` only holds native types that have no canonical type yet; see [Type names](tool-calling.md#type-names).
 

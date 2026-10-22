@@ -120,6 +120,8 @@ def run_client_tools(client: Tessaract, history: list) -> None:
             history.append(ComputerToolResult(
                 call_id=item.call_id, screenshot=b"png", acknowledged_safety_checks=item.safety_checks,
             ))
+        elif item.type == "shell_call" and item.executed_by == "provider":
+            print([output.stdout for output in item.output])
         elif item.type == "shell_call":
             print(item.commands, item.timeout_ms, item.restart)
             history.append(ShellToolResult(
@@ -130,3 +132,13 @@ def run_client_tools(client: Tessaract, history: list) -> None:
     for event in client.send(model="ant/m", input=history, tools=[ShellTool()], stream=True):
         if event.type == "tool_call.started" and event.call_type == "shell_call":
             print(event.call_id, event.name)
+
+
+def send_with_hosted_shell(client: Tessaract) -> None:
+    from tessaract import ContainerEnvironment, ShellTool
+
+    client.send(
+        model="oai/m",
+        input="hi",
+        tools=[ShellTool(environment=ContainerEnvironment(memory_limit="4g", allowed_domains=["pypi.org"]))],
+    )

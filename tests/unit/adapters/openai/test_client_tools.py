@@ -19,7 +19,6 @@ from tessaract import (
 from tessaract.types import computer_actions as actions
 from tessaract.types.output_types import (
     ComputerCallOutputItem,
-    ProviderOutputItem,
     SafetyCheck,
     ShellCallOutputItem,
 )
@@ -58,10 +57,6 @@ def test_shell_tool_keeps_a_local_environment_with_skills(openai_adapter):
     native = openai_adapter.map_shell_tool(ShellTool(provider_options={"environment": environment}))
 
     assert native == {"type": "shell", "environment": environment}
-
-def test_shell_tool_rejects_a_hosted_environment(openai_adapter):
-    with pytest.raises(ValueError, match="ProviderTool"):
-        openai_adapter.map_shell_tool(ShellTool(provider_options={"environment": {"type": "container_auto"}}))
 
 def test_client_tools_are_sent_in_order(openai_adapter):
     kwargs = openai_adapter._build_request_kwargs(Request(model="gpt-test", input=[], tools=[ShellTool(), ComputerUseTool()]))
@@ -169,16 +164,12 @@ def test_shell_call_is_normalized(openai_adapter):
     assert item.provider == "openai"
     assert (item.call_id, item.commands, item.timeout_ms, item.max_output_length) == ("call_1", ["ls", "pwd"], 5000, 2000)
     assert item.restart is False
+    assert item.executed_by == "client"
+    assert item.output == []
     assert item.raw is native
 
 def test_shell_call_without_environment_is_a_local_call(openai_adapter):
     assert isinstance(openai_adapter._normalize_output_item(_shell_call()), ShellCallOutputItem)
-
-def test_hosted_shell_call_passes_through(openai_adapter):
-    item = openai_adapter._normalize_output_item(_shell_call(environment={"type": "container_reference", "container_id": "cntr_1"}))
-
-    assert isinstance(item, ProviderOutputItem)
-    assert item.provider_type == "shell_call"
 
 def test_shell_result_has_one_output_per_command(openai_adapter):
     native = openai_adapter.map_shell_tool_result(ShellToolResult(

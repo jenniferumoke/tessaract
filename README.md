@@ -265,7 +265,7 @@ src/tessaract/
 - Multi-turn conversations
 - Function tools with parallel calls
 - Web search via `WebSearchTool`, and any native tool via `ProviderTool`
-- Computer use (`computer`) via `ComputerUseTool`, and a local shell via `ShellTool`
+- Computer use (`computer`) via `ComputerUseTool`, and a local or hosted (container) shell via `ShellTool`
 - Reasoning effort and summaries
 - Pass-through request options
 - Prompt caching via `CacheOptions` (mode and key) and `cache=True` breakpoints

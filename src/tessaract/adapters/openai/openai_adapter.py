@@ -10,11 +10,12 @@ from ...errors import UnsupportedToolOptionError
 from ...providers.openai_provider import OpenAIProvider
 from ...tools.computer import ComputerUseTool
 from ...tools.function import InputSchema, Property
-from ...tools.shell import ShellTool
+from ...tools.shell import ContainerEnvironment, ShellTool
 from ...tools.web_search import WebSearchTool
 from ...types import computer_actions as actions
 from ...types.input_types import ComputerToolResult, ShellToolResult
 from ...types.output_types import (
+    OutputItem,
     Annotation,
     AssistantMessage,
     ComputerCallOutputItem,
@@ -22,6 +23,7 @@ from ...types.output_types import (
     ProviderOutputItem,
     SafetyCheck,
     ShellCallOutputItem,
+    ShellCommandOutput,
     OutputType,
     ReasoningOutputItem,
     TextOutputItem,
@@ -270,14 +272,38 @@ class OpenAIAdapter(Adapter):
         # tool.cache is ignored, as on function tools: OpenAI caches tool definitions automatically
         return {**tool.provider_options, "type": tool.provider_options.get("type", "computer")}
 
-    def map_shell_tool(self, tool: ShellTool) -> dict[str, Any]:
-        environment = tool.provider_options.get("environment", {"type": "local"})
+    def _native_container(self, container: ContainerEnvironment) -> dict[str, Any]:
+        if container.container_id is not None:
+            return {**container.provider_options, "type": "container_reference", "container_id": container.container_id}
 
-        if not isinstance(environment, dict) or environment.get("type") != "local":
-            raise ValueError(
-                "ShellTool runs commands in your environment, so its OpenAI environment must be "
-                '{"type": "local", ...}. For OpenAI\'s hosted shell, use a ProviderTool.'
-            )
+        native: dict[str, Any] = {"type": "container_auto"}
+
+        if container.file_ids is not None:
+            native["file_ids"] = container.file_ids
+
+        if container.memory_limit is not None:
+            native["memory_limit"] = container.memory_limit
+
+        if container.network_disabled:
+            native["network_policy"] = {"type": "disabled"}
+        elif container.allowed_domains is not None:
+            # keep other native network policy fields, such as domain_secrets; the typed domains win
+            native["network_policy"] = {
+                **(container.provider_options.get("network_policy") or {}),
+                "type": "allowlist",
+                "allowed_domains": container.allowed_domains,
+            }
+
+        return {**container.provider_options, **native}
+
+    def map_shell_tool(self, tool: ShellTool) -> dict[str, Any]:
+        environment = (
+            {"type": "local"} if tool.environment == "local" else self._native_container(tool.environment)
+        )
+
+        # native environment fields in provider_options, such as skills, are kept; the typed environment wins
+        native_environment = tool.provider_options.get("environment") or {}
+        environment = {**native_environment, **environment}
 
         return {**tool.provider_options, "type": "shell", "environment": environment}
 
@@ -431,17 +457,12 @@ class OpenAIAdapter(Adapter):
             case "computer_call":
                 return self._normalize_computer_call(output_item)
 
-            # a shell_call in a container ran on OpenAI's servers (a hosted shell ProviderTool)
-            case "shell_call" if self._is_local_shell(output_item):
-                return ShellCallOutputItem(
-                    raw=output_item,
-                    provider="openai",
-                    call_id=output_item.call_id,
-                    commands=list(output_item.action.commands),
-                    timeout_ms=output_item.action.timeout_ms,
-                    max_output_length=output_item.action.max_output_length,
-                    status=output_item.status,
-                )
+            case "shell_call":
+                return self._shell_item(output_item, None)
+
+            # only calls in a container have their output in the response; OpenAI ran them
+            case "shell_call_output":
+                return self._shell_item(None, output_item)
 
             case _:
                 return ProviderOutputItem(raw=output_item, provider_type=output_item.type)
@@ -471,8 +492,50 @@ class OpenAIAdapter(Adapter):
         )
 
     def _is_local_shell(self, item) -> bool:
-        # environment is None or local for ShellTool calls, and a container for the hosted shell
+        # environment is None or local for calls your code runs, and a container for calls OpenAI runs
         return getattr(getattr(item, "environment", None), "type", "local") == "local"
+
+    def _shell_item(self, call, output) -> ShellCallOutputItem:
+        '''Builds a shell call from its shell_call item, its shell_call_output item, or both.
+
+            A local call has no output item: your code runs it. A call in a container that has no output
+            item yet is still running.
+        '''
+        if call is not None and self._is_local_shell(call):
+            return ShellCallOutputItem(
+                raw=call,
+                provider="openai",
+                call_id=call.call_id,
+                commands=list(call.action.commands),
+                timeout_ms=call.action.timeout_ms,
+                max_output_length=call.action.max_output_length,
+                status=call.status,
+            )
+
+        action = getattr(call, "action", None)
+        native = call if call is not None else output
+
+        return ShellCallOutputItem(
+            raw=[item for item in (call, output) if item is not None],
+            provider="openai",
+            executed_by="provider",
+            call_id=native.call_id,
+            commands=list(action.commands) if action is not None else [],
+            output=[
+                ShellCommandOutput(
+                    stdout=chunk.stdout,
+                    stderr=chunk.stderr,
+                    exit_code=getattr(chunk.outcome, "exit_code", 0),
+                    timed_out=chunk.outcome.type == "timeout",
+                )
+                for chunk in (output.output if output is not None else [])
+            ],
+            timeout_ms=action.timeout_ms if action is not None else None,
+            max_output_length=output.max_output_length if output is not None else (
+                action.max_output_length if action is not None else None
+            ),
+            status=output.status if output is not None else native.status,
+        )
 
     def _normalize_computer_action(self, action) -> actions.ComputerAction:
         keys = list(getattr(action, "keys", None) or [])
@@ -524,10 +587,53 @@ class OpenAIAdapter(Adapter):
             ],
         )
 
-    def _normalize_output(self, output_items) -> list[OutputType]:
-        return [self._normalize_output_item(item) for item in output_items]
+    def map_output_item(self, item: OutputItem) -> Any:
+        # a provider shell call's raw is a list: its shell_call and shell_call_output items
+        return list(item.raw) if isinstance(item.raw, list) else item.raw
 
-    def _normalize_stream_event(self, event):
+    def _normalize_output(self, output_items) -> list[OutputType]:
+        output: list[OutputType] = []
+        # provider shell calls by call_id, so an output that isn't next to its call still gets the commands
+        shell_calls: dict[str, ShellCallOutputItem] = {}
+
+        for native in output_items:
+            item = self._normalize_output_item(native)
+            previous = output[-1] if output else None
+
+            if isinstance(item, ShellCallOutputItem) and native.type == "shell_call":
+                shell_calls[item.call_id] = item
+
+            # a shell_call_output directly after its shell_call completes that call. Only neighbouring
+            # items are merged, so replaying the output keeps the native item order.
+            if (
+                native.type == "shell_call_output"
+                and isinstance(previous, ShellCallOutputItem)
+                and isinstance(previous.raw, list)
+                and len(previous.raw) == 1
+                and previous.raw[0].type == "shell_call"
+                and previous.call_id == native.call_id
+            ):
+                output[-1] = self._shell_item(previous.raw[0], native)
+
+            elif native.type == "shell_call_output" and isinstance(item, ShellCallOutputItem) and item.call_id in shell_calls:
+                call = shell_calls[item.call_id]
+                item.commands, item.timeout_ms = call.commands, call.timeout_ms
+                output.append(item)
+
+            else:
+                output.append(item)
+
+        return output
+
+    def _normalize_stream_event(self, event, pending_shell_calls: dict[str, Any] | None = None):
+        '''Normalizes one native stream event.
+
+            pending_shell_calls holds finished shell_call items OpenAI is running, by call_id, until their
+            shell_call_output arrives. Pass the same dict for every event of one stream.
+        '''
+        if pending_shell_calls is None:
+            pending_shell_calls = {}
+
         match event.type:
             case "response.created":
                 yield ResponseStartedEvent(
@@ -576,6 +682,15 @@ class OpenAIAdapter(Adapter):
                     raw_event=event
                 )
 
+            case "response.output_item.added" if event.item.type == "shell_call":
+                # a shell call in a container, which OpenAI runs
+                yield ServerToolCallStartedEvent(
+                    call_id=event.item.call_id,
+                    name="shell",
+                    output_index=event.output_index,
+                    raw_event=event
+                )
+
             case "response.output_item.added" if event.item.type in _SERVER_TOOL_CALL_ITEMS:
                 yield ServerToolCallStartedEvent(
                     call_id=event.item.id,
@@ -590,6 +705,16 @@ class OpenAIAdapter(Adapter):
                     provider="openai",
                     output_index=event.output_index,
                     content_index=event.content_index,
+                    raw_event=event
+                )
+
+            # a shell call OpenAI runs is done when its output arrives; output_item.done then carries both items
+            case "response.output_item.done" if event.item.type == "shell_call" and not self._is_local_shell(event.item):
+                pending_shell_calls[event.item.call_id] = event.item
+
+            case "response.output_item.done" if event.item.type == "shell_call_output":
+                yield OutputItemCompletedEvent(
+                    item=self._shell_item(pending_shell_calls.pop(event.item.call_id, None), event.item),
                     raw_event=event
                 )
 
@@ -743,6 +868,8 @@ class OpenAIAdapter(Adapter):
     
         kwargs = self._build_request_kwargs(request)
 
+        pending_shell_calls: dict[str, Any] = {}
+
         with self._client.responses.stream(**kwargs) as stream:
             for raw_event in stream:
-                yield from self._normalize_stream_event(raw_event)
+                yield from self._normalize_stream_event(raw_event, pending_shell_calls)

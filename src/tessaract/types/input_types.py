@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, Field
 
-from .output_types import SafetyCheck
+from .output_types import SafetyCheck, ShellCommandOutput
 
 if TYPE_CHECKING:
     from ..adapters.adapter import Adapter
@@ -63,13 +63,6 @@ class ComputerToolResult(InputType):
 
     def raw(self, adapter: Adapter):
         return adapter.map_computer_tool_result(self)
-
-class ShellCommandOutput(BaseModel):
-    '''What one shell command printed. exit_code is ignored when timed_out is True.'''
-    stdout: str = ""
-    stderr: str = ""
-    exit_code: int = 0
-    timed_out: bool = False
 
 class ShellToolResult(InputType):
     '''The result of a ShellCallOutputItem: one ShellCommandOutput per command, in order.
