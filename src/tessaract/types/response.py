@@ -80,6 +80,10 @@ class Response:
     usage: Usage | None = None
     error: ResponseError | None = None
 
+    # the provider container the response's shell calls ran in. Pass it to ContainerEnvironment(container_id=...)
+    # to keep using the container on the next request.
+    container_id: str | None = field(default=None, kw_only=True)
+
     # finish_details: FinishDetails | None = None
 
     # provider_timestamps: ProviderTimestamps | None = None

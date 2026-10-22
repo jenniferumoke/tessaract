@@ -112,16 +112,21 @@ class ShellCallOutputItem(OutputItem):
             and you send nothing back.
         commands: OpenAI can send several; Anthropic sends one
         output: one ShellCommandOutput per command, for provider calls. Empty while the call is still running.
+        file_ids: files the commands left in the container's output directory (Anthropic), for the Files API
+        error: the provider's error code when a provider call failed (Anthropic), e.g. "execution_time_exceeded"
         timeout_ms / max_output_length: limits OpenAI asks you to apply
         restart: Anthropic asks you to restart the shell session; commands is empty
 
-        A provider call's raw is the list of its shell_call and shell_call_output items, both replayed unchanged.
+        A provider call's raw is the list of its native call and output: OpenAI's shell_call and shell_call_output
+        items, or Anthropic's server_tool_use and bash_code_execution_tool_result blocks. Both are replayed unchanged.
     '''
     type: Literal["shell_call"] = "shell_call"
     call_id: str
     executed_by: Literal["client", "provider"] = "client"
     commands: list[str] = Field(default_factory=list)
     output: list[ShellCommandOutput] = Field(default_factory=list)
+    file_ids: list[str] = Field(default_factory=list)
+    error: str | None = None
     timeout_ms: int | None = None
     max_output_length: int | None = None
     restart: bool = False

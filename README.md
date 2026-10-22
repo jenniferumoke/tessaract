@@ -277,7 +277,7 @@ src/tessaract/
 - Multi-turn conversations, with automatic grouping into user/assistant turns
 - Function tools with parallel calls, and native tool-result error flags
 - Web search via `WebSearchTool`, and any native server tool (e.g. web fetch, code execution) via `ProviderTool`
-- Computer use (`computer_toolset_20260801`) via `ComputerUseTool`, and bash via `ShellTool`
+- Computer use (`computer_toolset_20260801`) via `ComputerUseTool`, and bash via `ShellTool`, locally or in Anthropic's container (code execution)
 - Adaptive, budgeted and between-tools thinking, effort, and thinking display (including beta `updates`)
 - System prompts via `instructions=` or `SystemPrompt`, and prompt caching via `CacheOptions`, `cache=True` breakpoints or `cache_control` pass-through
 - Token usage on `Response`, normalized so `input_tokens` includes cached tokens

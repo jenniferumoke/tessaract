@@ -2,7 +2,7 @@ import base64
 import json
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, TypeGuard
 
 from ..adapter import (
     Adapter,
@@ -22,7 +22,7 @@ from pydantic import ValidationError
 
 from ...tools.computer import ComputerUseTool
 from ...tools.function import InputSchema, Property
-from ...tools.shell import ShellTool
+from ...tools.shell import ContainerEnvironment, ShellTool
 from ...tools.web_search import WebSearchTool
 from ...types import computer_actions as actions
 from ...types.input_types import ComputerToolResult, ProviderToolResult, ShellToolResult
@@ -36,6 +36,7 @@ from ...types.output_types import (
     ProviderOutputItem,
     ReasoningOutputItem,
     ShellCallOutputItem,
+    ShellCommandOutput,
     TextOutputItem,
     WebSearchCallOutputItem,
     WebSource,
@@ -83,6 +84,15 @@ DEFAULT_WEB_SEARCH_TOOL_TYPE = "web_search_20250305"
 # Client tool versions sent when provider_options doesn't pin one
 DEFAULT_COMPUTER_TOOLSET_TYPE = "computer_toolset_20260801"
 DEFAULT_BASH_TOOL_TYPE = "bash_20250124"
+# ShellTool with a ContainerEnvironment maps to code execution, which runs bash in Anthropic's containers
+DEFAULT_CODE_EXECUTION_TOOL_TYPE = "code_execution_20250825"
+
+# server tool calls that become canonical items, by server_tool_use name, with their result block type
+_SERVER_CALL_RESULTS = {
+    "web_search": "web_search_tool_result",
+    "bash_code_execution": "bash_code_execution_tool_result",
+}
+_SERVER_RESULT_TYPES = set(_SERVER_CALL_RESULTS.values())
 
 # Computer action tool_use blocks carry this toolset_name; their name is the member, e.g. "left_click"
 COMPUTER_TOOLSET_NAME = "computer"
@@ -106,8 +116,8 @@ class _StreamState:
     '''What one stream has seen so far. Content block deltas don't say which kind of block they belong to.'''
     # indexes of server_tool_use blocks, whose input deltas aren't function arguments
     server_tool_indexes: set[int] = field(default_factory=set)
-    # finished web search server_tool_use blocks, by id, waiting for their result block
-    web_search_calls: dict[str, Any] = field(default_factory=dict)
+    # finished web search and code execution server_tool_use blocks, by id, waiting for their result block
+    server_tool_calls: dict[str, Any] = field(default_factory=dict)
     # the request declared a ShellTool, so bash tool_use blocks are shell calls
     shell_tool: bool = False
 
@@ -435,13 +445,34 @@ class AnthropicAdapter(Adapter):
 
         return {**tool.provider_options, **native}
 
+    def _code_execution_tool(self, tool: ShellTool, container: ContainerEnvironment) -> dict[str, Any]:
+        '''Maps a ShellTool with a ContainerEnvironment to Anthropic's code execution tool.
+
+            Anthropic's containers have a fixed size and no network access, so memory_limit and
+            allowed_domains have no equivalent; network_disabled is how they always run. container_id,
+            file_ids and the container's provider_options are sent outside the tool, in _build_request_kwargs.
+        '''
+        unsupported = [name for name in ("memory_limit", "allowed_domains") if getattr(container, name) is not None]
+        if unsupported:
+            raise UnsupportedToolOptionError(
+                f"Anthropic code execution containers do not support {', '.join(unsupported)}: they have a fixed "
+                "size and no network access. Remove "
+                f"{'them' if len(unsupported) > 1 else 'it'} from the ContainerEnvironment."
+            )
+
+        native: dict[str, Any] = {
+            "type": tool.provider_options.get("type", DEFAULT_CODE_EXECUTION_TOOL_TYPE),
+            "name": "code_execution",
+        }
+
+        if tool.cache and "cache_control" not in tool.provider_options:
+            native["cache_control"] = {"type": "ephemeral"}
+
+        return {**tool.provider_options, **native}
+
     def map_shell_tool(self, tool: ShellTool) -> dict[str, Any]:
         if tool.environment != "local":
-            raise UnsupportedToolOptionError(
-                "Anthropic's bash tool only runs in your environment, so ShellTool(environment=ContainerEnvironment(...)) "
-                "is not supported. Anthropic runs commands in its own containers through the code execution tool; "
-                "use a ProviderTool for it."
-            )
+            return self._code_execution_tool(tool, tool.environment)
 
         native: dict[str, Any] = {
             "type": tool.provider_options.get("type", DEFAULT_BASH_TOOL_TYPE),
@@ -516,6 +547,46 @@ class AnthropicAdapter(Adapter):
         # a content block such as a tool_result goes in a user turn; a full message is sent as is
         return native if "role" in native else {"role": "user", "content": [native]}
 
+    def _container_environment(self, request: Request) -> ContainerEnvironment | None:
+        containers = [
+            tool.environment for tool in request.tools or []
+            if isinstance(tool, ShellTool) and isinstance(tool.environment, ContainerEnvironment)
+        ]
+
+        if any(container != containers[0] for container in containers[1:]):
+            raise ValueError("Anthropic runs code execution in one container per request. Use one ContainerEnvironment.")
+
+        return containers[0] if containers else None
+
+    def _native_container(self, container: ContainerEnvironment) -> str | dict[str, Any] | None:
+        '''The top-level container parameter: a container ID to reuse, or an object with native fields such as skills.'''
+        if not container.provider_options:
+            return container.container_id
+
+        native = dict(container.provider_options)
+        if container.container_id is not None:
+            native["id"] = container.container_id
+        return native
+
+    def _add_container_uploads(self, messages: list, file_ids: list[str]) -> None:
+        '''Copies files into the container with container_upload blocks at the start of the first user turn.
+
+            The first turn keeps the prompt prefix the same on every request, so prompt caching still hits.
+        '''
+        first_user = next((message for message in messages if message["role"] == "user"), None)
+        if first_user is None:
+            raise ValueError("ContainerEnvironment.file_ids needs a user message to attach the files to.")
+
+        present = {
+            block.get("file_id") for block in first_user["content"]
+            if isinstance(block, dict) and block.get("type") == "container_upload"
+        }
+        uploads = [
+            {"type": "container_upload", "file_id": file_id}
+            for file_id in file_ids if file_id not in present
+        ]
+        first_user["content"] = [*uploads, *first_user["content"]]
+
     def _as_blocks(self, content) -> list:
         if isinstance(content, str):
             return [{"type": "text", "text": content}]
@@ -565,6 +636,14 @@ class AnthropicAdapter(Adapter):
 
         system, messages = self._assemble_messages(request.input)
 
+        container = self._container_environment(request)
+        container_param = None
+
+        if container is not None:
+            container_param = self._native_container(container)
+            if container.file_ids:
+                self._add_container_uploads(messages, container.file_ids)
+
         if request.instructions is not None:
             system = [{"type": "text", "text": request.instructions}, *system]
 
@@ -576,6 +655,9 @@ class AnthropicAdapter(Adapter):
 
         if system:
             canonical_params["system"] = system
+
+        if container_param is not None:
+            canonical_params["container"] = container_param
 
         if request.tools:
             canonical_params["tools"] = self.map_tools(request.tools)
@@ -708,11 +790,11 @@ class AnthropicAdapter(Adapter):
                     arguments=dict(content_block.input)
                 )
 
-            case "server_tool_use" if content_block.name == "web_search":
-                return self._web_search_item(content_block, None)
+            case "server_tool_use" if content_block.name in _SERVER_CALL_RESULTS:
+                return self._server_call_item(content_block, None)
 
-            case "web_search_tool_result":
-                return self._web_search_item(None, content_block)
+            case result_type if result_type in _SERVER_RESULT_TYPES:
+                return self._server_call_item(None, content_block)
 
             case _:
                 # redacted_thinking, other server tool blocks and anything newer pass through unchanged
@@ -777,6 +859,55 @@ class AnthropicAdapter(Adapter):
         # a member added in a newer toolset version, or one whose input changed, keeps its native payload
         return actions.ProviderComputerAction(provider_type=member, payload=payload)
 
+    def _server_call_item(self, call_block, result_block) -> WebSearchCallOutputItem | ShellCallOutputItem:
+        is_web_search = (
+            call_block.name == "web_search" if call_block is not None
+            else result_block.type == "web_search_tool_result"
+        )
+        if is_web_search:
+            return self._web_search_item(call_block, result_block)
+        return self._code_execution_shell_item(call_block, result_block)
+
+    def _code_execution_shell_item(self, call_block, result_block) -> ShellCallOutputItem:
+        '''Builds a shell call Anthropic ran, from its bash_code_execution server_tool_use block, its result block, or both.'''
+        if call_block is not None:
+            call_id = call_block.id
+            command = (call_block.input or {}).get("command")
+        elif result_block is not None:
+            call_id = result_block.tool_use_id
+            command = None
+        else:
+            raise ValueError("a shell call needs its server_tool_use block, its result block, or both")
+
+        status = "in_progress"
+        output: list[ShellCommandOutput] = []
+        file_ids: list[str] = []
+        error = None
+
+        if result_block is not None:
+            content = result_block.content
+            if content.type == "bash_code_execution_result":
+                status = "completed"
+                output = [ShellCommandOutput(stdout=content.stdout, stderr=content.stderr, exit_code=content.return_code)]
+                file_ids = [file.file_id for file in content.content]
+            else:
+                status = "incomplete"
+                error = content.error_code
+                if error == "execution_time_exceeded":
+                    output = [ShellCommandOutput(timed_out=True)]
+
+        return ShellCallOutputItem(
+            raw=[block for block in (call_block, result_block) if block is not None],
+            provider="anthropic",
+            executed_by="provider",
+            call_id=call_id,
+            commands=[command] if isinstance(command, str) else [],
+            output=output,
+            file_ids=file_ids,
+            error=error,
+            status=status,
+        )
+
     def _web_search_item(self, call_block, result_block) -> WebSearchCallOutputItem:
         '''Builds one web search call from its server_tool_use block, its result block, or both.
 
@@ -822,29 +953,28 @@ class AnthropicAdapter(Adapter):
 
     def _normalize_output(self, output_items, shell_tool: bool = False) -> list[OutputType]:
         output: list[OutputType] = []
-        # web search calls by id, so a result that isn't next to its call still gets the queries
-        web_search_calls: dict[str, WebSearchCallOutputItem] = {}
+        # server calls by id, so a result that isn't next to its call still gets the queries or commands
+        server_calls: dict[str, WebSearchCallOutputItem | ShellCallOutputItem] = {}
 
         for block in output_items:
             item = self._normalize_output_item(block, shell_tool)
             previous = output[-1] if output else None
 
-            if isinstance(item, WebSearchCallOutputItem) and block.type == "server_tool_use":
-                web_search_calls[item.call_id] = item
+            if block.type == "server_tool_use" and isinstance(item, WebSearchCallOutputItem | ShellCallOutputItem):
+                server_calls[item.call_id] = item
 
-            # a web search result directly after its server_tool_use block completes that call.
+            # a result block directly after its server_tool_use block completes that call.
             # Only neighbouring blocks are merged, so replaying the output keeps the native block order.
-            if (
-                block.type == "web_search_tool_result"
-                and isinstance(previous, WebSearchCallOutputItem)
-                and previous.call_id == block.tool_use_id
-                and previous.status == "in_progress"
-            ):
-                output[-1] = self._web_search_item(previous.raw[0], block)
+            if block.type in _SERVER_RESULT_TYPES and self._is_waiting_for(previous, block.tool_use_id):
+                output[-1] = self._server_call_item(previous.raw[0], block)
 
-            # parallel searches interleave calls and results; each stays its own item, in native order
-            elif isinstance(item, WebSearchCallOutputItem) and item.call_id in web_search_calls:
-                item.queries = web_search_calls[item.call_id].queries
+            # parallel calls interleave calls and results; each stays its own item, in native order
+            elif block.type in _SERVER_RESULT_TYPES and block.tool_use_id in server_calls:
+                call = server_calls[block.tool_use_id]
+                if isinstance(item, WebSearchCallOutputItem) and isinstance(call, WebSearchCallOutputItem):
+                    item.queries = call.queries
+                elif isinstance(item, ShellCallOutputItem) and isinstance(call, ShellCallOutputItem):
+                    item.commands = call.commands
                 output.append(item)
 
             # Anthropic splits text at every citation; neighbouring text blocks are one message
@@ -858,6 +988,16 @@ class AnthropicAdapter(Adapter):
                 output.append(item)
 
         return output
+
+    def _is_waiting_for(self, item, call_id: str) -> TypeGuard[WebSearchCallOutputItem | ShellCallOutputItem]:
+        '''Whether item is a server call that has only its server_tool_use block, with this id.'''
+        return (
+            isinstance(item, WebSearchCallOutputItem | ShellCallOutputItem)
+            and isinstance(item.raw, list)
+            and len(item.raw) == 1
+            and item.raw[0].type == "server_tool_use"
+            and item.call_id == call_id
+        )
 
     def _normalize_usage(self, provider_usage) -> Usage | None:
         if provider_usage is None:
@@ -932,6 +1072,7 @@ class AnthropicAdapter(Adapter):
             stop_reason=stop_reason,
             output=self._normalize_output(raw_response.content, shell_tool),
             usage=self._normalize_usage(raw_response.usage),
+            container_id=raw_response.container.id if getattr(raw_response, "container", None) else None,
             provider_usage=raw_response.usage,
             raw_response=raw_response
         )
@@ -962,7 +1103,8 @@ class AnthropicAdapter(Adapter):
                 state.server_tool_indexes.add(event.index)
                 yield ServerToolCallStartedEvent(
                     call_id=event.content_block.id,
-                    name=event.content_block.name,
+                    # a bash command in Anthropic's container is a shell call, as on OpenAI
+                    name="shell" if event.content_block.name == "bash_code_execution" else event.content_block.name,
                     output_index=event.index,
                     raw_event=event
                 )
@@ -996,21 +1138,22 @@ class AnthropicAdapter(Adapter):
                     raw_event=event
                 )
 
-            # a web search call is done when its result arrives; output_item.done then carries both blocks
+            # a web search or code execution call is done when its result arrives;
+            # output_item.done then carries both blocks
             case "content_block_stop" if (
                 getattr(event, "content_block", None) is not None
                 and event.content_block.type == "server_tool_use"
-                and event.content_block.name == "web_search"
+                and event.content_block.name in _SERVER_CALL_RESULTS
             ):
-                state.web_search_calls[event.content_block.id] = event.content_block
+                state.server_tool_calls[event.content_block.id] = event.content_block
 
             case "content_block_stop" if (
                 getattr(event, "content_block", None) is not None
-                and event.content_block.type == "web_search_tool_result"
+                and event.content_block.type in _SERVER_RESULT_TYPES
             ):
                 yield OutputItemCompletedEvent(
-                    item=self._web_search_item(
-                        state.web_search_calls.pop(event.content_block.tool_use_id, None),
+                    item=self._server_call_item(
+                        state.server_tool_calls.pop(event.content_block.tool_use_id, None),
                         event.content_block,
                     ),
                     output_index=event.index,

@@ -10,6 +10,7 @@ These items used to come back as `ProviderOutputItem`. They now come back as can
 | --- | --- | --- |
 | OpenAI `web_search_call` | `ProviderOutputItem` | `WebSearchCallOutputItem` (`"web_search_call"`) |
 | Anthropic `server_tool_use` (`web_search`) + `web_search_tool_result` | two `ProviderOutputItem`s | one `WebSearchCallOutputItem` |
+| Anthropic `server_tool_use` (`bash_code_execution`) + `bash_code_execution_tool_result` | two `ProviderOutputItem`s | one `ShellCallOutputItem` (`executed_by="provider"`, with `output`) |
 | OpenAI `computer_call` | `ProviderOutputItem` | `ComputerCallOutputItem` (`"computer_call"`) |
 | OpenAI `shell_call` (local environment) | `ProviderOutputItem` | `ShellCallOutputItem` (`"shell_call"`, `executed_by="client"`) |
 | OpenAI `shell_call` (container) + `shell_call_output` | two `ProviderOutputItem`s | one `ShellCallOutputItem` (`executed_by="provider"`, with `output`) |
@@ -20,15 +21,15 @@ Stream events changed the same way:
 
 - OpenAI `response.output_item.added` for `computer_call` and local `shell_call` items is now `tool_call.started` (was `custom_provider_event`), and for `web_search_call`, `file_search_call`, `code_interpreter_call`, `image_generation_call` and container `shell_call` items it is `server_tool_call.started`.
 - An OpenAI container `shell_call` no longer has its own `output_item.done`; the call's `output_item.done` arrives with its `shell_call_output`.
-- Anthropic `content_block_start` for `server_tool_use` is now `server_tool_call.started`, and that block's `input_json_delta` events stay `custom_provider_event`s instead of `tool_arguments.delta`.
-- A web search's `server_tool_use` block no longer has its own `output_item.done`; the call's `output_item.done` arrives with its result block.
+- Anthropic `content_block_start` for `server_tool_use` is now `server_tool_call.started` (`name="shell"` for `bash_code_execution`), and that block's `input_json_delta` events stay `custom_provider_event`s instead of `tool_arguments.delta`.
+- A web search's or code execution bash command's `server_tool_use` block no longer has its own `output_item.done`; the call's `output_item.done` arrives with its result block.
 
 ### Added
 
 - `WebSearchTool` and `UserLocation`: web search on both providers, returned as `WebSearchCallOutputItem`s.
 - `ComputerUseTool` and `ComputerToolResult`: computer use on both providers, with one canonical action set in `tessaract.types.computer_actions`.
 - `ShellTool`, `ShellToolResult` and `ShellCommandOutput`: a shell your code runs, on both providers.
-- `ContainerEnvironment`: `ShellTool(environment=ContainerEnvironment(...))` runs commands in a provider-managed container (OpenAI's hosted shell). These calls come back with `executed_by="provider"` and their `output`.
+- `ContainerEnvironment`: `ShellTool(environment=ContainerEnvironment(...))` runs commands in a provider-managed container: OpenAI's hosted shell, or Anthropic's code execution tool. These calls come back with `executed_by="provider"` and their `output`, and `Response.container_id` names the container to reuse.
 - `ProviderTool` and `ProviderToolResult`: any native tool definition and native result, sent unchanged.
 - `UnsupportedToolOptionError`, raised when a canonical tool option has no equivalent on the target provider.
 - `Usage.server_tool_requests`, server tool calls by tool name.

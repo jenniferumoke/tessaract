@@ -775,6 +775,16 @@ class OpenAIAdapter(Adapter):
             case _:
                 return None
 
+    def _container_id(self, output_items) -> str | None:
+        # shell calls in a container name it in their environment
+        for item in output_items:
+            if getattr(item, "type", None) != "shell_call":
+                continue
+            environment = getattr(item, "environment", None)
+            if environment is not None and environment.type == "container_reference":
+                return environment.container_id
+        return None
+
     def _normalize_response(self, raw_response) -> OpenAIResponse:
         output = self._normalize_output(raw_response.output)
 
@@ -802,6 +812,7 @@ class OpenAIAdapter(Adapter):
             status=self._normalize_status(raw_response.status),
             incomplete_reason=self._normalize_incomplete_reason(raw_response),
             output=output,
+            container_id=self._container_id(raw_response.output),
             error=ResponseError(message=raw_response.error.message, code=raw_response.error.code) if raw_response.error else None,
             usage=usage,
             provider_usage=provider_usage,

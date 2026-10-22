@@ -113,7 +113,8 @@ class ToolCallStartedEvent(BaseModel):
 class ServerToolCallStartedEvent(BaseModel):
     '''The model started a call to a tool the provider runs, such as web search.
 
-        name is the native tool name, e.g. "web_search". The finished call arrives as an
+        name is the tool name: "web_search", "shell" for a command in a provider container, or the native
+        name of another server tool. The finished call arrives as an
         output_item.done event. You don't send a result back for server tool calls.
     '''
     type: Literal["server_tool_call.started"] = "server_tool_call.started"

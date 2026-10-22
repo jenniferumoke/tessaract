@@ -94,12 +94,6 @@ def test_invalid_container_combinations_are_rejected(fields):
     with pytest.raises(ValidationError):
         ContainerEnvironment(**fields)
 
-def test_container_shell_tool_on_anthropic_raises(anthropic_adapter):
-    from tessaract import UnsupportedToolOptionError
-
-    with pytest.raises(UnsupportedToolOptionError, match="code execution"):
-        anthropic_adapter.map_shell_tool(ShellTool(environment=ContainerEnvironment()))
-
 def test_container_shell_tool_needs_no_sources_include(openai_adapter):
     kwargs = openai_adapter._build_request_kwargs(Request(
         model="gpt-test", input=[], tools=[ShellTool(environment=ContainerEnvironment())],
@@ -190,3 +184,13 @@ def test_stream_reports_a_provider_shell_call(openai_adapter):
     item = normalized[-1].item
     assert (item.executed_by, item.commands, len(item.output)) == ("provider", ["ls", "python -V"], 2)
     assert pending == {}
+
+def test_response_names_the_container(openai_adapter):
+    from openai.types.responses import Response as OpenAINativeResponse
+
+    response = openai_adapter._normalize_response(OpenAINativeResponse.model_construct(
+        id="resp_1", model="gpt-test", status="completed", incomplete_details=None, error=None, usage=None,
+        output=[_shell_call(), _shell_output()],
+    ))
+
+    assert response.container_id == "cntr_1"

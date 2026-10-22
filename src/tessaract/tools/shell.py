@@ -4,14 +4,18 @@ from pydantic import BaseModel, Field, model_validator
 
 
 class ContainerEnvironment(BaseModel):
-    '''A container the provider manages and runs shell commands in. OpenAI only.
+    '''A container the provider manages and runs shell commands in: OpenAI's hosted shell, or Anthropic's
+        code execution tool.
 
-        container_id: reuse an existing container. The other fields only apply to a new container.
+        container_id: reuse an existing container, e.g. Response.container_id. The other fields only apply to a new container.
         file_ids: uploaded files to copy into a new container
-        memory_limit: the new container's memory
-        allowed_domains: the only domains the container can reach
-        network_disabled: block all network access
-        provider_options: native environment fields, e.g. {"skills": [...]} or a network policy with domain_secrets
+        memory_limit: the new container's memory. OpenAI only; Anthropic containers have a fixed size.
+        allowed_domains: the only domains the container can reach. OpenAI only; Anthropic containers have no network access.
+        network_disabled: block all network access, which is how Anthropic containers always run
+        provider_options: native fields, e.g. {"skills": [...]}. Merged into OpenAI's environment, and sent as
+            Anthropic's top-level container object.
+
+        An option the target provider doesn't support raises UnsupportedToolOptionError.
     '''
     type: Literal["container"] = "container"
     container_id: str | None = None
@@ -41,10 +45,11 @@ class ShellTool(BaseModel):
 
         environment: "local" runs commands in your environment: calls come back as ShellCallOutputItems
             with executed_by="client", and you answer each one with a ShellToolResult. A ContainerEnvironment
-            runs them in a container the provider manages (OpenAI only): calls come back with
+            runs them in a container the provider manages: calls come back with
             executed_by="provider" and their output, and need no result.
 
-        Maps to OpenAI's shell tool and, for a local environment, Anthropic's bash_20250124 tool.
+        Maps to OpenAI's shell tool, and to Anthropic's bash_20250124 tool for a local environment or its
+        code_execution_20250825 tool for a container.
 
         cache: add a cache breakpoint to the tool definition. Anthropic only; OpenAI caches automatically.
         provider_options: native tool fields. On OpenAI, the fields of "environment" are merged into
