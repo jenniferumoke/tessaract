@@ -20,6 +20,8 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
+      - name: Upgrade pip
+        run: python -m pip install --upgrade pip==26.2.2
 
       - name: Build and check distributions
         run: |
@@ -45,6 +47,8 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
+      - name: Upgrade pip
+        run: python -m pip install --upgrade pip==26.2.2
       
       - name: Install packages with test dependencies
         run: python -m pip install -e ".[openai,anthropic]" pytest pytest-cov
@@ -60,6 +64,8 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
+      - name: Upgrade pip
+        run: python -m pip install --upgrade pip==26.2.2
 
       - name: Install packages with type checker
         run: python -m pip install -e ".[openai,anthropic]" pyright==1.1.414
