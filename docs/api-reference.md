@@ -208,6 +208,72 @@ Validation raises `ValueError` if `required` names a property that isn't in `pro
 
 Validation raises `ValueError` if `items` is set on a non-array type, if the object fields are set on a non-object type, or if `required` names an undefined property.
 
+### `WebSearchTool`
+
+`tessaract.WebSearchTool` (a Pydantic model). A web search the provider runs. See [Server tools](tool-calling.md#server-tools).
+
+| Field | Type | Default |
+| --- | --- | --- |
+| `max_uses` | `int \| None` (at least 1) | `None`. Anthropic only |
+| `allowed_domains` | `list[str] \| None` | `None` |
+| `blocked_domains` | `list[str] \| None` | `None`. Anthropic only; cannot be combined with `allowed_domains` |
+| `user_location` | `UserLocation \| None` | `None` |
+| `cache` | `bool` | `False`. Anthropic: `cache_control` on the tool definition. Ignored on OpenAI |
+| `provider_options` | `dict[str, Any]` | `{}`. Native tool fields; `"type"` pins the native tool version |
+
+### `UserLocation`
+
+`tessaract.UserLocation` (a Pydantic model): `city`, `region`, `country` (a two-letter ISO code), `timezone` (an IANA timezone), all `str | None`. Both adapters send it as an `approximate` location.
+
+### `ProviderTool`
+
+`tessaract.ProviderTool` (a Pydantic model). A native tool definition, sent unchanged.
+
+| Field | Type |
+| --- | --- |
+| `provider` | `"openai" \| "anthropic"`: the provider the definition was written for. Sending it to another provider raises `ValueError` |
+| `definition` | `dict[str, Any]` |
+
+### `ComputerUseTool`
+
+`tessaract.ComputerUseTool` (a Pydantic model). Lets the model control a computer your code runs. See [Computer use](tool-calling.md#computer-use).
+
+| Field | Type | Default |
+| --- | --- | --- |
+| `cache` | `bool` | `False`. Anthropic: `cache_control` on the tool definition. Ignored on OpenAI |
+| `provider_options` | `dict[str, Any]` | `{}`. Native tool fields, e.g. Anthropic `configs` |
+
+### `ShellTool`
+
+`tessaract.ShellTool` (a Pydantic model). Lets the model run shell commands, in your environment or in a container the provider manages. See [Shell](tool-calling.md#shell).
+
+| Field | Type | Default |
+| --- | --- | --- |
+| `environment` | `"local" \| ContainerEnvironment` | `"local"`: your code runs the commands. A `ContainerEnvironment` lets the provider run them: OpenAI's hosted shell, Anthropic's code execution tool |
+| `cache` | `bool` | `False`. Anthropic: `cache_control` on the tool definition. Ignored on OpenAI |
+| `provider_options` | `dict[str, Any]` | `{}`. Native tool fields; on OpenAI, the fields of `environment` are merged into the environment |
+
+### `ContainerEnvironment`
+
+`tessaract.ContainerEnvironment` (a Pydantic model). A container the provider manages. See [Provider-managed shell](tool-calling.md#provider-managed-shell).
+
+| Field | Type | Default |
+| --- | --- | --- |
+| `container_id` | `str \| None` | `None`. Reuse an existing container; cannot be combined with the fields below |
+| `file_ids` | `list[str] \| None` | `None` |
+| `memory_limit` | `"1g" \| "4g" \| "16g" \| "64g" \| None` | `None`. OpenAI only |
+| `allowed_domains` | `list[str] \| None` | `None`. OpenAI only; cannot be combined with `network_disabled` |
+| `network_disabled` | `bool` | `False`. Anthropic containers never have network access |
+| `provider_options` | `dict[str, Any]` | `{}`. Native fields, e.g. `skills`: merged into OpenAI's environment, sent as Anthropic's top-level `container` object |
+
+### `Tool`
+
+`tessaract.Tool` is `FunctionTool | WebSearchTool | ComputerUseTool | ShellTool | ProviderTool`, the type `send(tools=...)` accepts as a sequence.
+
+### `UnsupportedToolOptionError`
+
+`tessaract.UnsupportedToolOptionError`, a `ValueError` raised when a canonical tool option has no equivalent on the target provider, such as `WebSearchTool(max_uses=...)` on OpenAI.
+
 See [Tool calling](tool-calling.md).
 
 ---
@@ -235,6 +301,39 @@ See [Tool calling](tool-calling.md).
 | `cache` | `bool` | `False`. Puts a cache breakpoint on the last content part. On OpenAI, needs `gpt-5.6` or later. |
 
 Use `SystemPrompt(content="...")` in an input list to provide system instructions. It is mapped to an OpenAI input message with the `system` role, and moved to Anthropic's top-level `system` parameter.
+
+### `ComputerToolResult`
+
+`tessaract.ComputerToolResult`, the result of a `ComputerCallOutputItem`.
+
+| Field | Type | Default |
+| --- | --- | --- |
+| `call_id` | `str` | required |
+| `screenshot` | `bytes \| None` | `None`. PNG bytes. Required on OpenAI; on Anthropic, needed for `screenshot` and `zoom` actions |
+| `output` | `str \| None` | `None`. Text for the model (Anthropic); `"OK"` is sent when there is no screenshot or output. Ignored on OpenAI |
+| `is_error` | `bool` | `False`. Anthropic only; raises `UnsupportedToolOptionError` on OpenAI |
+| `acknowledged_safety_checks` | `list[SafetyCheck]` | `[]` (OpenAI) |
+| `cache` | `bool` | `False`. Anthropic only |
+| `provider_options` | `dict[str, Any]` | `{}` |
+
+### `ShellToolResult`
+
+`tessaract.ShellToolResult`, the result of a `ShellCallOutputItem`.
+
+| Field | Type | Default |
+| --- | --- | --- |
+| `call_id` | `str` | required |
+| `output` | `list[ShellCommandOutput]` | `[]`: one per command, in order. Empty answers an Anthropic restart |
+| `max_output_length` | `int \| None` | `None`. Pass the call's value back (OpenAI) |
+| `is_error` | `bool` | `False`. Anthropic only; raises `UnsupportedToolOptionError` on OpenAI |
+| `cache` | `bool` | `False`. Anthropic only |
+| `provider_options` | `dict[str, Any]` | `{}` |
+
+`tessaract.ShellCommandOutput` has `stdout: str = ""`, `stderr: str = ""`, `exit_code: int = 0` and `timed_out: bool = False` (`exit_code` is ignored when it is `True`).
+
+### `ProviderToolResult`
+
+`tessaract.ProviderToolResult`, a native input item sent unchanged: `provider` (`"openai" | "anthropic"`) and `item: dict`. On Anthropic, an item without a `role` is sent as a content block in a user turn. Sending it to another provider raises `ValueError`.
 
 ### `FunctionToolResult`
 
@@ -265,11 +364,12 @@ Use `SystemPrompt(content="...")` in an input list to provide system instruction
 | `output` | `list[OutputType]` | Typed output items, in order |
 | `usage` | `Usage \| None` | Normalized token counts when the provider reports usage |
 | `error` | `ResponseError \| None` | Set if the provider reports an error |
+| `container_id` | `str \| None` | The provider container the response's shell calls ran in; pass it to `ContainerEnvironment(container_id=...)` to reuse it |
 | `raw_response` | `Any` | The native SDK response object |
 | `output_text` *(property)* | `str` | All assistant message text joined together |
 | `response_id` *(property)* | `str` | An alias for `id` |
 
-`Usage` includes `input_tokens`, `output_tokens`, `total_tokens`, `cached_input_tokens`, `cache_write_input_tokens`, and `reasoning_tokens`. The detail fields are `None` when the provider does not report them. `OpenAIResponse.provider_usage` holds the native OpenAI SDK usage object, or `None` when usage is unavailable. Completed streaming responses expose both fields through `ResponseCompletedEvent.response`.
+`Usage` includes `input_tokens`, `output_tokens`, `total_tokens`, `cached_input_tokens`, `cache_write_input_tokens`, `reasoning_tokens`, and `server_tool_requests` (server tool calls by tool name, e.g. `{"web_search": 2}`, or `None` when no server tools ran). The detail fields are `None` when the provider does not report them. `OpenAIResponse.provider_usage` holds the native OpenAI SDK usage object, or `None` when usage is unavailable. Completed streaming responses expose both fields through `ResponseCompletedEvent.response`.
 
 `OpenAIResponse` takes `status` from OpenAI's response status, and `incomplete_reason` from `incomplete_details.reason`. `OpenAIResponse.input_tokens` and `OpenAIResponse.cached_input_tokens` provide direct access to the corresponding normalized usage counts. Each returns `None` when usage is unavailable; `cached_input_tokens` is also `None` when the provider does not report that detail.
 
@@ -326,11 +426,16 @@ A `str` enum, in `tessaract.types.response`:
 | `TextOutputItem` | `"text"` | `text: str`, `annotations: list[Annotation]`, `raw` |
 | `ReasoningOutputItem` | `"reasoning"` | `id`, `text` (the summary), `content` (the raw reasoning), `raw` |
 | `FunctionCallOutputItem` | `"function_call"` | `call_id`, `name`, `arguments: dict`, `raw` |
+| `ComputerCallOutputItem` | `"computer_call"` | `call_id`, `actions: list[ComputerAction]` (see [the action table](tool-calling.md#computer-use)), `status`, `safety_checks: list[SafetyCheck]` (`id`, `code`, `message`; OpenAI only), `provider`, `raw` |
+| `ShellCallOutputItem` | `"shell_call"` | `call_id`, `executed_by` (`"client"`: answer with a `ShellToolResult`; `"provider"`: it already ran), `commands: list[str]`, `output: list[ShellCommandOutput]` (provider calls), `file_ids` and `error` (Anthropic provider calls), `timeout_ms`, `max_output_length` (OpenAI), `restart` (Anthropic), `status`, `provider`, `raw` |
+| `WebSearchCallOutputItem` | `"web_search_call"` | `call_id`, `status` (`"in_progress"`, `"searching"`, `"completed"` or `"failed"`), `action` (`"search"`, `"open_page"` or `"find_in_page"`), `queries: list[str]`, `url`, `pattern`, `sources: list[WebSource]` (`url`, `title`, `page_age`), `error`, `provider`, `raw` |
 | `ProviderOutputItem` | `"provider_output"` | `provider_type` (the native item type), `raw` |
 
 The OpenAI adapter returns an assistant message as a `ProviderOutputItem` (`provider_type="message"`) when it contains anything other than plain `output_text`, such as refusals or annotations and citations. It still replays correctly, and you can inspect it through `.raw`.
 
-The Anthropic adapter returns neighbouring text blocks as one `AssistantMessage` whose `raw` is the list of native text blocks. Thinking blocks become `ReasoningOutputItem`s with `id=None`, and `redacted_thinking`, server tool blocks and any other block types become `ProviderOutputItem`s. Unknown OpenAI output item types are also returned as `ProviderOutputItem`s.
+The Anthropic adapter returns neighbouring text blocks as one `AssistantMessage` whose `raw` is the list of native text blocks. Thinking blocks become `ReasoningOutputItem`s with `id=None`. A web search's `server_tool_use` and `web_search_tool_result` blocks become one `WebSearchCallOutputItem` whose `raw` is the list of both blocks. A code execution `bash_code_execution` call and its result block become one `ShellCallOutputItem` with `executed_by="provider"`. A `tool_use` block with `toolset_name: "computer"` becomes a `ComputerCallOutputItem` with one action, and a `bash` `tool_use` block becomes a `ShellCallOutputItem` when the request has a `ShellTool`. `redacted_thinking`, other server tool blocks and any other block types become `ProviderOutputItem`s. Unknown OpenAI output item types are also returned as `ProviderOutputItem`s. An OpenAI `shell_call` in a container and its `shell_call_output` become one `ShellCallOutputItem` with `executed_by="provider"`, whose `raw` is the list of both items.
+
+`ProviderOutputItem` only holds native types that have no canonical type yet; see [Type names](tool-calling.md#type-names).
 
 `TextOutputItem.annotations` holds citations as `Annotation` objects (`provider`, `provider_type`, `source`, `title`, `cited_text`, `provider_metadata`). On Anthropic they come from a text block's `citations`, and `source` is the URL, source or file ID.
 
@@ -353,6 +458,7 @@ The Anthropic adapter returns neighbouring text blocks as one `AssistantMessage`
 | `ReasoningTextDeltaEvent` | `reasoning_text.delta` |
 | `FunctionCallArgumentDeltaEvent` | `tool_arguments.delta` |
 | `ToolCallStartedEvent` | `tool_call.started` |
+| `ServerToolCallStartedEvent` | `server_tool_call.started` |
 | `OutputItemCompletedEvent` | `output_item.done` |
 | `CustomProviderEvent` | `custom_provider_event` (the native event name is in `provider_type`) |
 

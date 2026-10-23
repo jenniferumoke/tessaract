@@ -92,7 +92,32 @@ class FunctionCallArgumentDeltaEvent(BaseModel):
     )
 
 class ToolCallStartedEvent(BaseModel):
+    '''The model started a call to a tool your code runs.
+
+        call_type is the type of the output item the call becomes. name is the function name for
+        function calls, and "computer" or "shell" for those tools.
+    '''
     type: Literal["tool_call.started"] = "tool_call.started"
+
+    call_id: str
+    name: str
+    output_index: int
+    call_type: Literal["function_call", "computer_call", "shell_call"] = "function_call"
+
+    raw_event: Any | None = Field(
+        default=None,
+        exclude=True,
+        repr=False,
+    )
+
+class ServerToolCallStartedEvent(BaseModel):
+    '''The model started a call to a tool the provider runs, such as web search.
+
+        name is the tool name: "web_search", "shell" for a command in a provider container, or the native
+        name of another server tool. The finished call arrives as an
+        output_item.done event. You don't send a result back for server tool calls.
+    '''
+    type: Literal["server_tool_call.started"] = "server_tool_call.started"
 
     call_id: str
     name: str
@@ -142,6 +167,7 @@ StreamEventUnion: TypeAlias = (
     ReasoningStartedEvent |
     ResponseFailedEvent | 
     ToolCallStartedEvent | 
+    ServerToolCallStartedEvent |
     FunctionCallArgumentDeltaEvent | 
     ReasoningTextDeltaEvent | 
     ReasoningSummaryDeltaEvent |

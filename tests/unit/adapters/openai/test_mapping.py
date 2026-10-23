@@ -126,11 +126,11 @@ def test_unknown_output_items_pass_through(openai_adapter):
 
     from tessaract.types.output_types import ProviderOutputItem
 
-    item = SimpleNamespace(type="web_search_call")
+    item = SimpleNamespace(type="image_generation_call")
     result = openai_adapter._normalize_output_item(item)
 
     assert isinstance(result, ProviderOutputItem)
-    assert result.provider_type == "web_search_call"
+    assert result.provider_type == "image_generation_call"
     assert result.raw is item
 
 def test_unknown_stream_events_keep_their_native_name_in_provider_type(openai_adapter):

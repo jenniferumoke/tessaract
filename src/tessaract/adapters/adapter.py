@@ -1,13 +1,19 @@
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from typing import TYPE_CHECKING, Any, Literal
 
 from typing_extensions import Protocol
 
 from ..types.output_types import OutputItem, TextOutputItem
 from ..providers.provider import Provider
-from ..tools.function import InputSchema
+from ..tools.computer import ComputerUseTool
+from ..tools.function import FunctionTool, InputSchema
+from ..tools.provider import ProviderTool
+from ..tools.shell import ShellTool
+from ..tools.web_search import UserLocation, WebSearchTool
 
 if TYPE_CHECKING:
+    from ..tools import Tool
+    from ..types.input_types import ComputerToolResult, ProviderToolResult, ShellToolResult
     from ..types.request import Request
     from ..types.response import Response
     from ..types.streaming.event_types import StreamEventUnion
@@ -64,6 +70,9 @@ class ReasoningProtocol(Protocol):
     text: str | None = None
 
 class Adapter:
+    # the provider a ProviderTool must be written for to be sent through this adapter
+    provider_name: str
+
     def __init__(self, provider: Provider):
         self._provider = provider
 
@@ -82,6 +91,66 @@ class Adapter:
 
     def map_function_schema(self, tools: list[FunctionToolSchemaProtocol]) -> list:
         raise NotImplementedError("not yet implemented...")
+
+    def map_tools(self, tools: Sequence["Tool"]) -> list:
+        '''Maps canonical tool definitions to native ones, keeping their order.'''
+        native = []
+
+        for tool in tools:
+            if isinstance(tool, FunctionTool):
+                native.extend(self.map_function_schema([tool]))
+            elif isinstance(tool, WebSearchTool):
+                native.append(self.map_web_search_tool(tool))
+            elif isinstance(tool, ComputerUseTool):
+                native.append(self.map_computer_use_tool(tool))
+            elif isinstance(tool, ShellTool):
+                native.append(self.map_shell_tool(tool))
+            elif isinstance(tool, ProviderTool):
+                native.append(self.map_provider_tool(tool))
+            elif isinstance(tool, type):
+                # a tool class instead of an instance, e.g. tools=[WebSearchTool]
+                raise TypeError(f"Pass {tool.__name__}(), an instance, not the class {tool.__name__}.")
+            else:
+                raise TypeError(
+                    f"Unsupported tool type: {type(tool).__name__}. Use FunctionTool, WebSearchTool, "
+                    "ComputerUseTool, ShellTool or ProviderTool."
+                )
+
+        return native
+
+    def map_web_search_tool(self, tool: WebSearchTool) -> dict[str, Any]:
+        raise NotImplementedError("not yet implemented...")
+
+    def map_computer_use_tool(self, tool: ComputerUseTool) -> dict[str, Any]:
+        raise NotImplementedError("not yet implemented...")
+
+    def map_shell_tool(self, tool: ShellTool) -> dict[str, Any]:
+        raise NotImplementedError("not yet implemented...")
+
+    def _check_provider(self, kind: str, provider: str) -> None:
+        if provider != self.provider_name:
+            raise ValueError(
+                f"This {kind} was written for {provider!r} and cannot be sent to {self.provider_name!r}. "
+                f"Use a canonical type, or a {kind} for {self.provider_name!r}."
+            )
+
+    def map_provider_tool(self, tool: ProviderTool) -> dict[str, Any]:
+        self._check_provider("ProviderTool", tool.provider)
+        return dict(tool.definition)
+
+    def map_computer_tool_result(self, item: "ComputerToolResult") -> Any:
+        raise NotImplementedError("not yet implemented...")
+
+    def map_shell_tool_result(self, item: "ShellToolResult") -> Any:
+        raise NotImplementedError("not yet implemented...")
+
+    def map_provider_tool_result(self, item: "ProviderToolResult") -> Any:
+        self._check_provider("ProviderToolResult", item.provider)
+        return dict(item.item)
+
+    def _native_user_location(self, location: UserLocation) -> dict[str, Any]:
+        # both providers take the same approximate location object
+        return {"type": "approximate", **location.model_dump(exclude_none=True)}
 
     def map_reasoning_params(self, reasoning: ReasoningParamsProtocol | None) -> Any:
         raise NotImplementedError("not yet implemented...")
