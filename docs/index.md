@@ -29,7 +29,6 @@ from tessaract import AnthropicProvider, OpenAIProvider, Tessaract
 client = Tessaract(providers={"oai": OpenAIProvider(), "ant": AnthropicProvider()})
 
 openai_response = client.send(model="oai/gpt-6-luna", input="Say hello in five words.")
-print(response.output_text)
 
 anthropic_response = client.send(model="ant/claude-opus-5-5", input="Say hello in five words.")
 
@@ -47,6 +46,7 @@ print(f'anthropic response: {anthropic_response.output_text}')
 ## Guides
 
 - [Tool calling](tool-calling.md): define tools, handle calls, and return results.
+- [Server-side tools](server-tools.md): research, data analysis and computer use agents, and workflows that combine providers.
 - [Reasoning](reasoning.md): request reasoning and preserve it across turns.
 - [Streaming](streaming.md): consume typed streaming events.
 - [Architecture](architecture.md): understand the canonical types and provider adapters.

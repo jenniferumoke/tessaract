@@ -23,8 +23,10 @@ nav:
   - Home: index.md
   - Getting started: getting-started.md
   - Building an agent: building-an-agent.md
+  - Examples: examples.md
   - Guides:
       - Tool calling: tool-calling.md
+      - Server-side tools: server-tools.md
       - Reasoning: reasoning.md
       - Streaming: streaming.md
   - API reference: api-reference.md
@@ -32,7 +34,14 @@ nav:
 
 markdown_extensions:
   - admonition
-  - pymdownx.superfences
+  - pymdownx.snippets:
+      base_path: ["."]
+      check_paths: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
   - tables
   - toc:
       permalink: true
