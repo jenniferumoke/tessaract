@@ -8,6 +8,8 @@ from tessaract import FunctionTool, InputSchema, Property
 
 Tools the provider runs on its own servers, such as web search, are covered in [Server tools](#server-tools). Provider-defined tools your code runs, computer use and shell, are covered in [Client-executed provider tools](#client-executed-provider-tools).
 
+For complete agents built with these tools, and workflows that combine providers, see [Server-side tools](server-tools.md).
+
 ## Defining a tool
 
 ```python
