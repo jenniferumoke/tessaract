@@ -1,30 +1,56 @@
-# Server-side tools
+# Provider tools
 
-Provider tools come in two modes, depending on who runs them:
+Provider tools are tools whose schema and implementation are defined by the model provider. You could write shell, computer use or web search tools yourself as [function tools](tool-calling.md), but they are so central to agents that OpenAI and Anthropic ship standard versions of them. Their models are trained on these tools and already know their schemas, so they use them well and quickly. You turn them on by adding them to the request, and the native APIs handle the rest.
 
-- **Provider-executed** tools run on the provider's servers. The model calls them during its turn, and the call comes back in the response with its result already filled in, so you send nothing back.
-- **Client-executed** tools are defined by the provider, but your code runs them. Each call comes back as an output item, your code runs it, and you append a result to the history, just as you do for a [function tool](tool-calling.md#handling-function-calls).
+Provider tools come in two kinds, depending on who runs them:
 
-| Tool | Mode | Call item | You send back |
+- **Client-executed** tools are defined by the provider, but your code runs them. Each call comes back as an output item, your code carries it out, and you append a result to the history, as you do for a [function tool](tool-calling.md#handling-function-calls). Computer use works this way on both providers.
+- **Server-side** tools run entirely on the provider's servers. The call comes back in the response with its result already filled in, so you send nothing back. Web search is the typical example.
+
+Tessaract gives each provider tool one canonical type that works on both providers, so an agent can use OpenAI's and Anthropic's web search, shell or computer use tools without writing them twice. The provider's native tool is still what runs, so you keep its native behavior and performance.
+
+## One tool, local or hosted
+
+Some provider tools support both kinds. OpenAI's `shell` tool runs commands on your machine, or in a container OpenAI hosts. Anthropic splits the same job into two tools: `bash` runs on your machine, and code execution runs in a container Anthropic hosts. In Tessaract both are a `ShellTool`, and you switch between local and hosted execution by changing one argument:
+
+```python
+from tessaract import ContainerEnvironment, ShellTool
+
+ShellTool()                                          # client-executed: OpenAI shell (local) or Anthropic bash
+ShellTool(environment=ContainerEnvironment())        # server-side: OpenAI hosted shell or Anthropic code execution
+```
+
+The rest of your code stays the same. Each `shell_call` says where it ran in `executed_by`, so one loop handles both:
+
+```python
+for call in (item for item in response.output if item.type == "shell_call"):
+    if call.executed_by == "provider":       # server-side: the output is already in call.output
+        continue
+    history.append(run_locally(call))        # client-executed: run it and send a ShellToolResult
+```
+
+## Tools at a glance
+
+| Tool | Kind | Call item | You send back |
 | --- | --- | --- | --- |
-| `WebSearchTool` | provider-executed | `WebSearchCallOutputItem` (`"web_search_call"`) | nothing |
-| `ShellTool(environment=ContainerEnvironment())` | provider-executed | `ShellCallOutputItem` with `executed_by="provider"` | nothing |
+| `WebSearchTool` | server-side | `WebSearchCallOutputItem` (`"web_search_call"`) | nothing |
+| `ShellTool(environment=ContainerEnvironment())` | server-side | `ShellCallOutputItem` with `executed_by="provider"` | nothing |
 | `ShellTool()` (a local environment) | client-executed | `ShellCallOutputItem` with `executed_by="client"` | `ShellToolResult` |
 | `ComputerUseTool` | client-executed | `ComputerCallOutputItem` (`"computer_call"`) | `ComputerToolResult` |
 | `ProviderTool` | either, depending on the native tool | `ProviderOutputItem`, or a canonical item | nothing, or a `ProviderToolResult` |
-| `FunctionTool` | your own tool | `FunctionCallOutputItem` (`"function_call"`) | `FunctionToolResult` |
+| `FunctionTool` | not a provider tool: you define and run it | `FunctionCallOutputItem` (`"function_call"`) | `FunctionToolResult` |
 
-All of them go in the same `tools=` list, and one request can mix both modes. Whatever the mode, append all of `response.output` to the history: provider-executed calls replay unchanged, so the model can see its earlier searches and commands.
+All of them go in the same `tools=` list, and one request can mix both kinds. Whatever the kind, append all of `response.output` to the history: server-side calls replay unchanged, so the model can see its earlier searches and commands.
 
-This page builds complete agents with these tools. The fields and per-provider mappings are in [Tool calling](tool-calling.md#server-tools). Each example is also a runnable script in [`examples/`](https://github.com/jenniferumoke/tessaract/tree/main/examples).
+The rest of this page builds complete agents with these tools. The fields and per-provider mappings are in Tool calling, under [Server tools](tool-calling.md#server-tools) and [Client-executed provider tools](tool-calling.md#client-executed-provider-tools). Each example is also a runnable script in [`examples/`](https://github.com/jenniferumoke/tessaract/tree/main/examples).
 
-| Example | Mode | Provider |
+| Example | Kind | Provider |
 | --- | --- | --- |
-| [Research agent](#research-agent-openai) | provider-executed web search plus a function tool | OpenAI |
-| [Data analyst in a container](#data-analyst-in-a-container-anthropic) | provider-executed shell | Anthropic |
+| [Research agent](#research-agent-openai) | server-side web search plus a function tool | OpenAI |
+| [Data analyst in a container](#data-analyst-in-a-container-anthropic) | server-side shell | Anthropic |
 | [Computer use agent](#computer-use-agent-openai) | client-executed computer use | OpenAI |
-| [Generator and critic](#generator-and-critic) | provider-executed shell, then a function tool on another provider | Anthropic and OpenAI |
-| [Parallel fan-out and compare](#parallel-fan-out-and-compare) | provider-executed web search on both providers | Anthropic and OpenAI |
+| [Generator and critic](#generator-and-critic) | server-side shell, then a function tool on another provider | Anthropic and OpenAI |
+| [Parallel fan-out and compare](#parallel-fan-out-and-compare) | server-side web search on both providers | Anthropic and OpenAI |
 
 ## Research agent (OpenAI)
 

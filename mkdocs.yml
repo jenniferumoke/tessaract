@@ -26,7 +26,7 @@ nav:
   - Examples: examples.md
   - Guides:
       - Tool calling: tool-calling.md
-      - Server-side tools: server-tools.md
+      - Provider tools: provider-tools.md
       - Reasoning: reasoning.md
       - Streaming: streaming.md
   - API reference: api-reference.md

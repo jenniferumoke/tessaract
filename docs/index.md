@@ -46,7 +46,7 @@ print(f'anthropic response: {anthropic_response.output_text}')
 ## Guides
 
 - [Tool calling](tool-calling.md): define tools, handle calls, and return results.
-- [Server-side tools](server-tools.md): research, data analysis and computer use agents, and workflows that combine providers.
+- [Provider tools](provider-tools.md): client-executed and server-side provider tools, with research, data analysis and computer use agents, and workflows that combine providers.
 - [Reasoning](reasoning.md): request reasoning and preserve it across turns.
 - [Streaming](streaming.md): consume typed streaming events.
 - [Architecture](architecture.md): understand the canonical types and provider adapters.
