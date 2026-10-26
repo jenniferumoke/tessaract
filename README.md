@@ -30,8 +30,8 @@ More concretely, Tessaract exposes a **canonical model of the LLM ecosystem**: r
 
 - **Provider prefixes.** Register a provider under a prefix and address models as `"<prefix>/<model>"`, e.g. `"oai/gpt-5.6-luna"`.
 - **Canonical tools.** Define function tools once with `FunctionTool` / `InputSchema` / `Property`, including nested objects, arrays, enums and nullable fields. The adapter emits the provider's native schema.
-- **Computer use and shell.** `ComputerUseTool` and `ShellTool` give the model a computer or shell your code runs. Actions come back as one canonical set (`click`, `type`, `scroll`, …) on both providers, and you answer with `ComputerToolResult` / `ShellToolResult`.
-- **Server tools.** Add web search with `WebSearchTool`, next to your function tools. Searches come back as typed `WebSearchCallOutputItem`s with their queries and sources. Other native tools work through `ProviderTool`.
+- **Computer use and shell.** `ComputerUseTool` returns canonical actions (`click`, `type`, `scroll`, …) for your code to run on both providers; answer with `ComputerToolResult`. `ShellTool` supports local execution or provider-managed containers.
+- **Server tools.** `WebSearchTool` and hosted `ShellTool` run on the provider's servers and return results directly. Searches come back as typed `WebSearchCallOutputItem`s with their queries and sources. Other native tools work through `ProviderTool`.
 - **Canonical reasoning.** Control effort and summaries with `ReasoningOptions`; read reasoning back as `ReasoningOutputItem`s.
 - **Typed output.** Responses contain `AssistantMessage`, `ReasoningOutputItem`, `FunctionCallOutputItem` and `ProviderOutputItem` objects. Function-call arguments are already parsed into a `dict`.
 - **Canonical streaming events.** Text, reasoning and tool-argument deltas are normalized into typed events (`text.delta`, `reasoning_summary.delta`, `response.completed`, …).
@@ -183,6 +183,23 @@ To run the same agent on Anthropic, register `AnthropicProvider` and change `mod
 
 The step-by-step walkthrough is in the [building an agent guide](https://tessaractai.com/building-an-agent/), with runnable versions in [`examples/`](https://github.com/jenniferumoke/tessaract/tree/main/examples).
 
+### Local or hosted shell
+
+Choose where shell commands run, and add the tool to your request's `tools` list:
+
+```python
+from tessaract import ContainerEnvironment, ShellTool
+
+local_shell = ShellTool()  # your application runs the commands
+hosted_shell = ShellTool(environment=ContainerEnvironment())  # the provider runs the commands
+```
+
+Local execution maps to OpenAI's local shell or Anthropic's bash; hosted execution maps to OpenAI's hosted shell or Anthropic's code execution.
+
+Each `shell_call` identifies who runs it in `executed_by`. For `"client"`, run the commands and append a `ShellToolResult` with the matching `call_id`. For `"provider"`, completed calls include their results in `call.output`; do not submit a `ShellToolResult`. In both modes, append all of `response.output` to the history.
+
+See the [provider-tools guide](docs/provider-tools.md) for result handling and complete agent examples.
+
 ---
 
 ## Streaming
@@ -223,7 +240,8 @@ The documentation site is [tessaractai.com](https://tessaractai.com/).
 | --- | --- |
 | [Getting started](https://tessaractai.com/getting-started/) | Installing, configuring providers, sending your first request, and building multi-turn history |
 | [Building an agent](https://tessaractai.com/building-an-agent/) | A step-by-step tutorial for an agent with reasoning and tool calling, both synchronous and streaming |
-| [Tool calling](https://tessaractai.com/tool-calling/) | `FunctionTool`, `InputSchema`, `Property`, strict mode, tool results, `provider_options`, server tools (web search), and computer use and shell |
+| [Tool calling](https://tessaractai.com/tool-calling/) | `FunctionTool`, `InputSchema`, `Property`, strict mode, tool results, `provider_options`, server tools (web search and hosted shell), and client-executed computer use and shell |
+| [Provider tools](docs/provider-tools.md) | Local and hosted shell execution, web search, computer use, result handling, and complete agent examples |
 | [Reasoning](https://tessaractai.com/reasoning/) | `ReasoningOptions`, effort levels, summaries, and reading and preserving reasoning items |
 | [Streaming](https://tessaractai.com/streaming/) | Every canonical stream event, and how to build a streaming agent loop |
 | [API reference](https://tessaractai.com/api-reference/) | Every public class, field and method |
