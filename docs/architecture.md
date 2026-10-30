@@ -17,7 +17,7 @@ Tessaract has three layers:
 
 ## Providers
 
-A **provider** (`providers/`) holds credentials and the vendor SDK client. `OpenAIProvider` builds `openai.OpenAI(...)` from its typed fields plus `provider_args`, falls back to `OPENAI_API_KEY`, and imports the SDK lazily. `AnthropicProvider` does the same with `anthropic.Anthropic(...)` and `ANTHROPIC_API_KEY`, so Tessaract depends only on `pydantic` unless you install an extra.
+A **provider** (`providers/`) holds credentials and the vendor SDK client. `OpenAIProvider` builds `openai.OpenAI(...)` from its typed fields plus `provider_args`, falls back to `OPENAI_API_KEY`, and imports the SDK lazily. `AnthropicProvider` does the same with `anthropic.Anthropic(...)` and `ANTHROPIC_API_KEY`, and `OpenRouterProvider` with `openrouter.OpenRouter(...)` and `OPENROUTER_API_KEY`, so Tessaract depends only on `pydantic` unless you install an extra.
 
 ## Adapters
 
@@ -33,7 +33,7 @@ An **adapter** (`adapters/`) translates in both directions between canonical typ
 | `map_reasoning_params(ReasoningOptions)` | canonical → native | Reasoning configuration |
 | `map_reasoning(...)` | canonical → native | Reserved |
 
-`OpenAIAdapter` and `AnthropicAdapter` also implement:
+`OpenAIAdapter`, `AnthropicAdapter` and `OpenRouterAdapter` also implement:
 
 - `_normalize_output_item` / `_normalize_output`, which turn native output items into canonical ones
 - `_normalize_stream_event`, which turns native stream events into canonical ones
@@ -42,6 +42,8 @@ An **adapter** (`adapters/`) translates in both directions between canonical typ
 - `generate_stream(request) -> Iterator[StreamEventUnion]`
 
 `AnthropicAdapter._build_request_kwargs` also reshapes the flat list of mapped items into what the Messages API expects. System items move to the top-level `system` parameter, after `request.instructions`. Neighbouring items with the same role are merged into one turn, so a response's thinking, text and `tool_use` blocks become one assistant turn, and the `tool_result`s that follow become one user turn with the results first. When `max_tokens` isn't set it sends `DEFAULT_ANTHROPIC_MAX_TOKENS` (16,000). Requests that use beta-only thinking features go to `client.beta.messages` with the beta header added.
+
+`OpenRouterAdapter` uses OpenRouter's Responses API through the OpenRouter SDK, independently of `OpenAIAdapter`. OpenRouter stores nothing between requests, so it always asks for `reasoning.encrypted_content` and the history carries the reasoning. The SDK only accepts plain dicts as input, so output items are dumped with `model_dump(by_alias=True)` before they are replayed.
 
 ## The request lifecycle
 

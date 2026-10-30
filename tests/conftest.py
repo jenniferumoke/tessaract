@@ -78,3 +78,55 @@ def anthropic_adapter(anthropic_provider):
 @pytest.fixture
 def anthropic_client(anthropic_provider):
     return Tessaract(providers={"ant": anthropic_provider})
+
+
+class FakeOpenRouterAPI:
+    '''Serves canned OpenRouter Responses API payloads over an httpx MockTransport and records each request.
+
+        responses are served in order; the last one is repeated.
+    '''
+
+    def __init__(self):
+        self.requests: list = []
+        self.responses: list[dict] = []
+
+    @property
+    def last_body(self) -> dict:
+        return json.loads(self.requests[-1].content)
+
+    @property
+    def bodies(self) -> list[dict]:
+        return [json.loads(request.content) for request in self.requests]
+
+    def handler(self, request):
+        import httpx
+
+        self.requests.append(request)
+        payload = self.responses[min(len(self.requests), len(self.responses)) - 1]
+        return httpx.Response(200, json=payload)
+
+@pytest.fixture
+def openrouter_api():
+    return FakeOpenRouterAPI()
+
+@pytest.fixture
+def openrouter_provider(openrouter_api):
+    pytest.importorskip("openrouter")
+    import httpx
+
+    from tessaract import OpenRouterProvider
+
+    http_client = httpx.Client(transport=httpx.MockTransport(openrouter_api.handler))
+    provider = OpenRouterProvider(api_key="test-api-key", provider_args={"client": http_client})
+    yield provider
+    http_client.close()
+
+@pytest.fixture
+def openrouter_adapter(openrouter_provider):
+    from tessaract.adapters.openrouter.openrouter_adapter import OpenRouterAdapter
+
+    return OpenRouterAdapter(openrouter_provider)
+
+@pytest.fixture
+def openrouter_client(openrouter_provider):
+    return Tessaract(providers={"or": openrouter_provider})

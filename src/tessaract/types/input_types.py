@@ -93,7 +93,7 @@ class ProviderToolResult(InputType):
         provider is the provider the item was written for. Sending it to another provider raises.
     '''
     type: Literal["provider_tool_result"] = "provider_tool_result"
-    provider: Literal["anthropic", "openai"]
+    provider: Literal["anthropic", "openai", "openrouter"]
     item: dict[str, Any]
 
     def raw(self, adapter: Adapter):

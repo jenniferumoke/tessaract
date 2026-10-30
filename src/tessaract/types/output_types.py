@@ -15,7 +15,7 @@ class Annotation(BaseModel):
     title: str | None = None
     cited_text: str | None = None
 
-    provider: Literal["anthropic", "openai"]
+    provider: Literal["anthropic", "openai", "openrouter"]
 
     provider_metadata: dict[str, Any] = Field(
         default_factory=dict,

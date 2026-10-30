@@ -10,6 +10,7 @@ Tessaract requires **Python 3.11+**. Install the extra for each provider you use
 python -m pip install "tessaract[openai]"             # OpenAI
 python -m pip install "tessaract[anthropic]"          # Anthropic
 python -m pip install "tessaract[openai,anthropic]"   # both
+python -m pip install "tessaract[openrouter]"         # OpenRouter (non-streaming, preview)
 ```
 
 If you use uv, add it to your project with `uv add "tessaract[openai,anthropic]"`.

@@ -114,6 +114,32 @@ This creates an `anthropic.Anthropic` client from the fields that are set, plus 
 
 **Raises:** `ImportError` if the `anthropic` package isn't installed, and `ValueError` if no API key is found.
 
+### `OpenRouterProvider`
+
+`tessaract.OpenRouterProvider`
+
+```python
+OpenRouterProvider(api_key="sk-or-...", app_url="https://myapp.example", app_title="My App")
+```
+
+This creates an `openrouter.OpenRouter` client. If `api_key` is `None`, it reads `OPENROUTER_API_KEY`. Register it under a prefix and keep OpenRouter's own model IDs after it: `"or/anthropic/claude-sonnet-5.5"` sends `anthropic/claude-sonnet-5.5`, since only the first `/` separates the prefix.
+
+The OpenRouter SDK takes different arguments from the other SDKs, so the typed fields are translated:
+
+| Field | Sent to the SDK as |
+| --- | --- |
+| `base_url` | `server_url` |
+| `timeout` (seconds) | `timeout_ms` |
+| `max_retries` | Only `0` is accepted, which turns retries off. The SDK retries with a time-based backoff, so pass `provider_args={"retry_config": RetryConfig(...)}` to change it. |
+| `default_headers`, `default_query` | Set on the `httpx.Client` the provider builds. They can't be combined with your own `client` in `provider_args`. |
+| `app_url`, `app_title` | `http_referer` and `x_open_router_title`, OpenRouter's app attribution headers |
+
+`request_options` are keyword arguments of the SDK's `responses.send()`, such as `provider` (routing preferences), `models` (fallbacks) or `plugins`. The OpenRouter adapter doesn't support streaming, prompt caching, or `WebSearchTool`, `ComputerUseTool` and `ShellTool` yet; they raise `NotImplementedError`. `ProviderTool(provider="openrouter", ...)` definitions are sent unchanged.
+
+Responses are `OpenRouterResponse`s. `response.cost` is what OpenRouter charged for the request, when it reports it.
+
+**Raises:** `ImportError` if the `openrouter` package isn't installed, and `ValueError` if no API key is found or `max_retries` isn't `0`.
+
 ---
 
 ## Requests
