@@ -134,7 +134,7 @@ The OpenRouter SDK takes different arguments from the other SDKs, so the typed f
 | `default_headers`, `default_query` | Set on the `httpx.Client` the provider builds. They can't be combined with your own `client` in `provider_args`. |
 | `app_url`, `app_title` | `http_referer` and `x_open_router_title`, OpenRouter's app attribution headers |
 
-`request_options` are keyword arguments of the SDK's `responses.send()`, such as `provider` (routing preferences), `models` (fallbacks) or `plugins`. `WebSearchTool` and a `ShellTool` with a `ContainerEnvironment` map to OpenRouter's server tools. The OpenRouter adapter doesn't support prompt caching, `ComputerUseTool` or a local `ShellTool` yet; they raise `NotImplementedError`. `ProviderTool(provider="openrouter", ...)` definitions are sent unchanged.
+`request_options` are keyword arguments of the SDK's `responses.send()`, such as `provider` (routing preferences), `models` (fallbacks) or `plugins`. `WebSearchTool` and a `ShellTool` with a `ContainerEnvironment` map to OpenRouter's server tools. `ComputerUseTool` and a local `ShellTool` raise `UnsupportedToolOptionError`, since OpenRouter has no native equivalent. The adapter doesn't support prompt caching yet; it raises `NotImplementedError`. `ProviderTool(provider="openrouter", ...)` definitions are sent unchanged.
 
 Responses are `OpenRouterResponse`s. `response.cost` is what OpenRouter charged for the request, when it reports it.
 

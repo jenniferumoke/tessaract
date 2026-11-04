@@ -329,6 +329,8 @@ Computer use and shell are tools the provider defines but your code runs. The mo
 
 `ShellTool` can also run commands in a container the provider manages, so the provider executes them; see [Provider-managed shell](#provider-managed-shell).
 
+OpenRouter has no native equivalent of these tools, and Tessaract doesn't imitate them with function tools. `ComputerUseTool`, a local `ShellTool` and their results raise `UnsupportedToolOptionError` on OpenRouter: its shell tool never runs on the client, and the OpenRouter SDK can't send a computer call's result back. To run them yourself on OpenRouter, define a `FunctionTool`.
+
 ### Computer use
 
 ```python
@@ -467,7 +469,7 @@ Options a provider doesn't support raise `UnsupportedToolOptionError`. On Anthro
 - Code execution can also view and edit files. Those `text_editor_code_execution` calls come back as `ProviderOutputItem`s.
 - One request uses one container, so all `ShellTool`s with a `ContainerEnvironment` in a request must have the same one.
 
-On OpenRouter, a `ShellTool` with a `ContainerEnvironment` maps to `openrouter:shell`, which uses OpenAI's hosted shell on OpenAI models and OpenRouter's sandbox on the others. A local `ShellTool` isn't supported yet.
+On OpenRouter, a `ShellTool` with a `ContainerEnvironment` maps to `openrouter:shell`, which uses OpenAI's hosted shell on OpenAI models and OpenRouter's sandbox on the others. A local `ShellTool` raises `UnsupportedToolOptionError`, because OpenRouter's shell tool never runs on the client.
 
 - `container_id`, `file_ids` and `allowed_domains` work as on OpenAI. `memory_limit` raises `UnsupportedToolOptionError`. Containers have no network access unless you set `allowed_domains`.
 - `ShellTool.provider_options` go into `parameters`, e.g. `{"engine": "openrouter"}` to always use the sandbox. `ContainerEnvironment.provider_options` are merged into the environment.

@@ -89,8 +89,11 @@ class OpenRouterAdapter(Adapter):
         openrouter:shell. Depending on the model, their calls come back as OpenRouter's own items or as
         the upstream provider's (web_search_call, shell_call and shell_call_output); both are normalized.
 
-        Not supported yet: prompt caching and the client tools (ComputerUseTool, a local ShellTool).
-        ProviderTool definitions are sent unchanged.
+        OpenRouter has no native equivalent of the client tools, so they raise UnsupportedToolOptionError
+        instead of being imitated: its shell tool never runs on the client, and the SDK can't send a
+        computer call's result back. ProviderTool definitions are sent unchanged.
+
+        Not supported yet: prompt caching.
 
         The SDK validates every request against its own models: native fields it doesn't model are
         dropped, and an output item type it doesn't know comes back as a ProviderOutputItem but can't
@@ -104,6 +107,18 @@ class OpenRouterAdapter(Adapter):
 
     def _not_supported_yet(self, feature: str) -> NotImplementedError:
         return NotImplementedError(f"{feature} isn't supported by the OpenRouter adapter yet.")
+
+    def _no_computer_use(self) -> UnsupportedToolOptionError:
+        return UnsupportedToolOptionError(
+            "OpenRouter does not support computer use: the OpenRouter SDK can't send a computer call's "
+            "result back. Use a FunctionTool to build your own, or another provider."
+        )
+
+    def _no_local_shell(self) -> UnsupportedToolOptionError:
+        return UnsupportedToolOptionError(
+            "OpenRouter's shell tool has no local environment: commands only run in a provider container. "
+            "Use ShellTool(environment=ContainerEnvironment()), or a FunctionTool to run commands yourself."
+        )
 
     def map_input_message(self, item: UserMessageProtocol | SystemPromptProtocol):
         if item.cache:
@@ -297,11 +312,11 @@ class OpenRouterAdapter(Adapter):
         return {**container.provider_options, **native}
 
     def map_computer_use_tool(self, tool: ComputerUseTool) -> dict[str, Any]:
-        raise self._not_supported_yet("ComputerUseTool")
+        raise self._no_computer_use()
 
     def map_shell_tool(self, tool: ShellTool) -> dict[str, Any]:
         if tool.environment == "local":
-            raise self._not_supported_yet("A ShellTool with a local environment")
+            raise self._no_local_shell()
 
         if tool.cache:
             raise self._not_supported_yet("Prompt caching (cache=True)")
@@ -316,10 +331,10 @@ class OpenRouterAdapter(Adapter):
         return {"type": "openrouter:shell", "parameters": parameters}
 
     def map_computer_tool_result(self, item: ComputerToolResult) -> Any:
-        raise self._not_supported_yet("ComputerToolResult")
+        raise self._no_computer_use()
 
     def map_shell_tool_result(self, item: ShellToolResult) -> Any:
-        raise self._not_supported_yet("ShellToolResult")
+        raise self._no_local_shell()
 
     def _extra_fields(self, provider_options: dict[str, Any], canonical_keys: set[str]) -> dict[str, Any]:
         return {key: value for key, value in provider_options.items() if key not in canonical_keys}

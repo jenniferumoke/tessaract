@@ -4,6 +4,7 @@ pytest.importorskip("openrouter")
 
 from tessaract import (
     CacheOptions,
+    ComputerToolResult,
     ComputerUseTool,
     FunctionTool,
     FunctionToolResult,
@@ -13,9 +14,10 @@ from tessaract import (
     ProviderToolResult,
     ReasoningOptions,
     ShellTool,
+    ShellToolResult,
     SystemPrompt,
+    UnsupportedToolOptionError,
     UserMessage,
-    WebSearchTool,
 )
 from tests.fixtures import openrouter as payloads
 
@@ -195,9 +197,23 @@ def test_request_options_are_sent_and_canonical_parameters_win(openrouter_client
     [ComputerUseTool(display_width=1024, display_height=768), ShellTool()],
     ids=["computer", "local_shell"],
 )
-def test_canonical_client_tools_are_not_supported_yet(openrouter_client, tool):
-    with pytest.raises(NotImplementedError, match="OpenRouter adapter"):
+def test_client_tools_have_no_openrouter_equivalent(openrouter_client, openrouter_api, tool):
+    with pytest.raises(UnsupportedToolOptionError, match="OpenRouter"):
         openrouter_client.send(model=MODEL, input="hi", tools=[tool])
+
+    assert openrouter_api.requests == []
+
+
+@pytest.mark.parametrize(
+    "result",
+    [ComputerToolResult(call_id="call_1", screenshot=b"png"), ShellToolResult(call_id="call_1")],
+    ids=["computer", "shell"],
+)
+def test_client_tool_results_have_no_openrouter_equivalent(openrouter_client, openrouter_api, result):
+    with pytest.raises(UnsupportedToolOptionError, match="OpenRouter"):
+        openrouter_client.send(model=MODEL, input=["hi", result])
+
+    assert openrouter_api.requests == []
 
 
 @pytest.mark.parametrize(

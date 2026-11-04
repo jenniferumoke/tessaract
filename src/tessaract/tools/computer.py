@@ -13,6 +13,8 @@ class ComputerUseTool(BaseModel):
         provider_options: native tool fields, e.g. {"configs": {"zoom": {"enabled": False}}} for Anthropic.
 
         Anthropic's earlier computer_20251124 tool has a different call shape; use a ProviderTool for it.
+
+        OpenRouter has no native equivalent, so sending this tool to it raises UnsupportedToolOptionError.
     '''
     type: Literal["computer"] = "computer"
     cache: bool = False
