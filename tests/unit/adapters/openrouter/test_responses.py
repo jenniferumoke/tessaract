@@ -181,3 +181,217 @@ def test_assistant_messages_replay_unchanged(openrouter_client, openrouter_api):
         message,
         {"role": "user", "content": "how are you?"},
     ]
+
+
+def _stream(client, input="What's the temperature in Paris?"):
+    return list(client.send(model=MODEL, input=input, stream=True))
+
+
+def _done_items(*items):
+    return [
+        event
+        for index, item in enumerate(items)
+        for event in (
+            {"type": "response.output_item.added", "output_index": index, "item": item},
+            {"type": "response.output_item.done", "output_index": index, "item": item},
+        )
+    ]
+
+
+def test_stream_of_text(openrouter_client, openrouter_api):
+    message = payloads.message("Hello!")
+    final = payloads.response([message])
+    openrouter_api.responses = [payloads.stream(
+        {"type": "response.created", "response": payloads.response([], status="in_progress", usage=None)},
+        {"type": "response.output_item.added", "output_index": 0, "item": {**message, "content": []}},
+        *[
+            {"type": "response.output_text.delta", "output_index": 0, "content_index": 0, "item_id": "msg_1", "delta": delta, "logprobs": []}
+            for delta in ("Hel", "lo!")
+        ],
+        {"type": "response.output_item.done", "output_index": 0, "item": message},
+        {"type": "response.completed", "response": final},
+    )]
+
+    events = _stream(openrouter_client)
+
+    assert openrouter_api.last_body["stream"] is True
+    assert [event.type for event in events] == [
+        "response_started", "custom_provider_event", "text.delta", "text.delta", "output_item.done", "response.completed",
+    ]
+    assert events[1].provider_type == "response.output_item.added"
+    assert events[2].provider == "openrouter"
+    assert events[2].item_id == "msg_1"
+    assert "".join(event.delta for event in events if event.type == "text.delta") == "Hello!"
+    assert isinstance(events[4].item, AssistantMessage)
+
+    response = events[-1].response
+    assert isinstance(response, OpenRouterResponse)
+    assert response.output_text == "Hello!"
+    assert response.cost == 0.00042
+
+
+@pytest.mark.parametrize(
+    ("delta_type", "canonical_type"),
+    [
+        ("response.reasoning_summary_text.delta", "reasoning_summary.delta"),
+        ("response.reasoning_text.delta", "reasoning_text.delta"),
+    ],
+)
+def test_stream_of_reasoning(openrouter_client, openrouter_api, delta_type, canonical_type):
+    delta = {"type": delta_type, "output_index": 0, "item_id": "rs_open", "delta": "Hmm"}
+    delta.update({"summary_index": 0} if "summary" in delta_type else {"content_index": 0})
+    openrouter_api.responses = [payloads.stream(
+        {"type": "response.output_item.added", "output_index": 0, "item": {**payloads.OPEN_MODEL_REASONING, "content": []}},
+        delta,
+        {"type": "response.output_item.done", "output_index": 0, "item": payloads.OPEN_MODEL_REASONING},
+    )]
+
+    started, text, done = _stream(openrouter_client)
+
+    assert (started.type, started.item_id, started.output_index) == ("reasoning.started", "rs_open", 0)
+    assert (text.type, text.delta, text.item_id) == (canonical_type, "Hmm", "rs_open")
+    assert isinstance(done.item, ReasoningOutputItem)
+    assert done.item.content == "I should call get_weather."
+
+
+def test_stream_of_a_tool_call(openrouter_client, openrouter_api):
+    openrouter_api.responses = [payloads.stream(
+        {"type": "response.output_item.added", "output_index": 0, "item": {**payloads.WEATHER_CALL, "arguments": ""}},
+        {"type": "response.function_call_arguments.delta", "output_index": 0, "item_id": "fc_1", "delta": '{"city":"Paris"}'},
+        {"type": "response.output_item.done", "output_index": 0, "item": payloads.WEATHER_CALL},
+    )]
+
+    started, arguments, done = _stream(openrouter_client)
+
+    assert (started.type, started.call_id, started.name) == ("tool_call.started", "call_1", "get_weather")
+    assert (arguments.type, arguments.delta, arguments.item_id) == ("tool_arguments.delta", '{"city":"Paris"}', "fc_1")
+    assert isinstance(done.item, FunctionCallOutputItem)
+    assert done.item.arguments == {"city": "Paris"}
+
+
+@pytest.mark.parametrize(
+    ("item", "name"),
+    [
+        ({"type": "web_search_call", "id": "ws_1", "status": "in_progress"}, "web_search"),
+        ({"type": "openrouter:datetime", "id": "dt_1", "status": "in_progress", "datetime": "2026-01-01T00:00:00Z", "timezone": "UTC"}, "datetime"),
+    ],
+    ids=["hosted", "openrouter"],
+)
+def test_stream_of_a_server_tool_call(openrouter_client, openrouter_api, item, name):
+    openrouter_api.responses = [payloads.stream(
+        {"type": "response.output_item.added", "output_index": 0, "item": item},
+    )]
+
+    [started] = _stream(openrouter_client)
+
+    assert (started.type, started.call_id, started.name) == ("server_tool_call.started", item["id"], name)
+
+
+def test_stream_output_replays_like_a_response(openrouter_client, openrouter_api):
+    reasoning = payloads.ANTHROPIC_REASONING
+    openrouter_api.responses = [
+        payloads.stream(*_done_items(reasoning, payloads.WEATHER_CALL), {"type": "response.completed", "response": payloads.response([reasoning, payloads.WEATHER_CALL])}),
+    ]
+    history: list = ["What's the temperature in Paris?"]
+
+    completed = _stream(openrouter_client, history)[-1]
+    history.extend(completed.response.output)
+    _stream(openrouter_client, history)
+
+    assert openrouter_api.last_body["input"] == [
+        {"role": "user", "content": "What's the temperature in Paris?"},
+        reasoning,
+        payloads.WEATHER_CALL,
+    ]
+
+
+def test_incomplete_stream_ends_as_completed(openrouter_client, openrouter_api):
+    response = payloads.response(
+        [payloads.message("Hel")], status="incomplete", incomplete_details={"reason": "max_output_tokens"},
+    )
+    openrouter_api.responses = [payloads.stream({"type": "response.incomplete", "response": response})]
+
+    [event] = _stream(openrouter_client)
+
+    assert event.type == "response.completed"
+    assert event.response.status is ResponseStatus.INCOMPLETE
+    assert event.response.incomplete_reason is IncompleteReason.MAX_TOKENS
+
+
+def test_failed_stream_carries_its_error(openrouter_client, openrouter_api):
+    response = payloads.response([], status="failed", error={"code": "server_error", "message": "Upstream failed"})
+    openrouter_api.responses = [payloads.stream({"type": "response.failed", "response": response})]
+
+    [event] = _stream(openrouter_client)
+
+    assert event.type == "response.failed"
+    assert event.message == "Upstream failed"
+    assert event.error.code == "server_error"
+    assert event.response.status is ResponseStatus.FAILED
+
+
+def test_error_event_fails_the_stream(openrouter_client, openrouter_api):
+    openrouter_api.responses = [payloads.stream(
+        {"type": "error", "code": "rate_limit_exceeded", "message": "Slow down", "param": None},
+    )]
+
+    [event] = _stream(openrouter_client)
+
+    assert event.type == "response.failed"
+    assert (event.message, event.error.code) == ("Slow down", "rate_limit_exceeded")
+    assert event.response is None
+
+
+@pytest.mark.parametrize(
+    ("event", "message", "code"),
+    [
+        ({"type": "error", "message": "Upstream failed", "code": 502}, "Upstream failed", "502"),
+        ({"type": "error", "error": {"message": "Nested", "code": "bad"}}, "Nested", "bad"),
+        ({"type": "response.failed", "response": {"error": {"message": "Partial"}}}, "Partial", None),
+        ({"type": "response.completed", "response": {}}, "The OpenRouter SDK couldn't read a response.completed event.", None),
+    ],
+    ids=["error", "nested_error", "failed", "completed"],
+)
+def test_unreadable_terminal_events_fail_the_stream(openrouter_client, openrouter_api, event, message, code):
+    openrouter_api.responses = [[event]]
+
+    [failed] = _stream(openrouter_client)
+
+    assert failed.type == "response.failed"
+    assert (failed.message, failed.error.code) == (message, code)
+
+
+def test_unknown_events_and_items_pass_through(openrouter_client, openrouter_api):
+    openrouter_api.responses = [payloads.stream(
+        {"type": "response.in_progress", "response": payloads.response([], status="in_progress", usage=None)},
+        {"type": "response.brand_new", "payload": 1},
+        {"type": "response.output_item.added", "output_index": 0, "item": {"type": "brand_new_item"}},
+        {"type": "response.output_item.done", "output_index": 0, "item": {"type": "brand_new_item"}},
+    )]
+
+    in_progress, brand_new, added, done = _stream(openrouter_client)
+
+    assert in_progress.provider_type == "response.in_progress"
+    assert brand_new.provider_type == "response.brand_new"
+    assert brand_new.raw_event.raw["payload"] == 1
+    assert added.provider_type == "response.output_item.added"
+    assert isinstance(done.item, ProviderOutputItem)
+    assert done.item.provider_type == "brand_new_item"
+
+
+def test_stopping_early_closes_the_connection(openrouter_client, openrouter_api, monkeypatch):
+    openrouter_api.responses = [payloads.stream(
+        {"type": "response.output_text.delta", "output_index": 0, "content_index": 0, "item_id": "msg_1", "delta": "Hi", "logprobs": []},
+        {"type": "response.completed", "response": payloads.response([payloads.message("Hi")])},
+    )]
+    from openrouter.utils.eventstreaming import EventStream
+
+    closed = []
+    close = EventStream.close
+    monkeypatch.setattr(EventStream, "close", lambda self: (closed.append(True), close(self))[1])
+
+    stream = openrouter_client.send(model=MODEL, input="hi", stream=True)
+    next(stream)
+    stream.close()
+
+    assert closed == [True]

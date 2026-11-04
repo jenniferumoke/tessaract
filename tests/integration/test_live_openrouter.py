@@ -63,10 +63,10 @@ def _reasoning(family: str) -> ReasoningOptions:
     return ReasoningOptions(effort="low", summary="auto")
 
 
-def _send(client, model, family, history):
+def _send(client, model, family, history, stream=False):
     return client.send(
         model=model, input=history, tools=[WEATHER], reasoning=_reasoning(family),
-        instructions=INSTRUCTIONS, max_tokens=4096,
+        instructions=INSTRUCTIONS, max_tokens=4096, stream=stream,
     )
 
 
@@ -97,3 +97,26 @@ def test_reasoning_tool_call_round_trip(live):
     # the replayed reasoning has to be accepted by the model's upstream provider
     response = _send(client, model, family, history)
     assert "19" in response.output_text
+
+
+def test_streaming_reasoning_tool_call_round_trip(live):
+    client, model, family = live
+    history: list = [QUESTION]
+
+    events = list(_send(client, model, family, history, stream=True))
+    types = {event.type for event in events}
+    assert {"response_started", "reasoning.started", "tool_call.started", "tool_arguments.delta", "output_item.done"} <= types
+    assert events[-1].type == "response.completed", f"the stream ended with {events[-1]}"
+
+    response = events[-1].response
+    assert response.usage is not None and response.usage.input_tokens > 0
+    calls = [item for item in response.output if item.type == "function_call"]
+    assert calls, f"expected a function call, got {response.output}"
+
+    history.extend(response.output)
+    for call in calls:
+        history.append(FunctionToolResult(call_id=call.call_id, result={"city": "Paris", "temperature": "19C"}))
+
+    events = list(_send(client, model, family, history, stream=True))
+    assert events[-1].type == "response.completed", f"the stream ended with {events[-1]}"
+    assert "19" in "".join(event.delta for event in events if event.type == "text.delta")

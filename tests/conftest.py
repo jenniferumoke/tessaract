@@ -83,7 +83,8 @@ def anthropic_client(anthropic_provider):
 class FakeOpenRouterAPI:
     '''Serves canned OpenRouter Responses API payloads over an httpx MockTransport and records each request.
 
-        responses are served in order; the last one is repeated.
+        responses are served in order; the last one is repeated. A list of events is served as a
+        server-sent event stream.
     '''
 
     def __init__(self):
@@ -103,6 +104,11 @@ class FakeOpenRouterAPI:
 
         self.requests.append(request)
         payload = self.responses[min(len(self.requests), len(self.responses)) - 1]
+
+        if isinstance(payload, list):
+            body = "".join(f"data: {json.dumps(event)}\n\n" for event in payload) + "data: [DONE]\n\n"
+            return httpx.Response(200, headers={"content-type": "text/event-stream"}, content=body)
+
         return httpx.Response(200, json=payload)
 
 @pytest.fixture

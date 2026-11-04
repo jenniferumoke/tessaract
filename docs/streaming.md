@@ -8,14 +8,14 @@ for event in client.send(model="oai/gpt-5.6-luna", input="Tell me a story.", str
         print(event.delta, end="", flush=True)
 ```
 
-Every event has a `type` string that you can branch on, and a `raw_event` field that holds the untouched provider SDK event. The same events are emitted for OpenAI and Anthropic.
+Every event has a `type` string that you can branch on, and a `raw_event` field that holds the untouched provider SDK event. The same events are emitted for OpenAI, Anthropic and OpenRouter.
 
 ## Event reference
 
 | `type` | Class | Emitted when | Key fields |
 | --- | --- | --- | --- |
 | `response_started` | `ResponseStartedEvent` | The provider creates the response | `message` |
-| `reasoning.started` | `ReasoningStartedEvent` | A reasoning summary part begins | `item_id` (OpenAI), `output_index` (Anthropic) |
+| `reasoning.started` | `ReasoningStartedEvent` | A reasoning summary part begins | `item_id` (OpenAI, OpenRouter), `output_index` (Anthropic, OpenRouter) |
 | `reasoning_summary.delta` | `ReasoningSummaryDeltaEvent` | A chunk of reasoning summary text arrives | `delta`, `item_id`, `output_index` |
 | `reasoning_text.delta` | `ReasoningTextDeltaEvent` | A chunk of raw reasoning text arrives, on models that expose it | `delta`, `item_id`, `output_index` |
 | `text.delta` | `TextDeltaEvent` | A chunk of assistant text arrives | `delta`, `output_index`, `content_index`, `provider` |
@@ -27,7 +27,7 @@ Every event has a `type` string that you can branch on, and a `raw_event` field 
 | `response.failed` | `ResponseFailedEvent` | The response failed, or the provider sent an error event | `message`, `error` (`ResponseError` with `message` and `code`), `response` (when available) |
 | `custom_provider_event` | `CustomProviderEvent` | Any provider event without a canonical equivalent, e.g. `response.in_progress` or `response.output_text.done` | `provider_type` (the native event name), `raw_event` |
 
-> A stream ends with either `response.completed` or `response.failed`. Transport and HTTP errors before the stream starts are still raised as SDK exceptions, so wrap the loop in `try`/`except openai.APIError` (or `anthropic.APIError`) if you need to handle them.
+> A stream ends with either `response.completed` or `response.failed`. Transport and HTTP errors before the stream starts are still raised as SDK exceptions, so wrap the loop in `try`/`except openai.APIError` (or `anthropic.APIError`, or `openrouter.errors.OpenRouterError`) if you need to handle them.
 
 ### How Anthropic events map
 
@@ -111,9 +111,17 @@ def stream_turn(history, user_text):
 
 The complete runnable version is [`examples/streaming_agent.py`](https://github.com/jenniferumoke/tessaract/blob/main/examples/streaming_agent.py).
 
+## OpenRouter differences
+
+OpenRouter's events follow the OpenAI ones, with these differences:
+
+- `reasoning.started` fires once per reasoning item, when the item is added, because models that return only reasoning text have no summary parts. `response.reasoning_summary_part.added` is a `CustomProviderEvent`.
+- `response.incomplete` becomes `response.completed`, and the response's `status` and `incomplete_reason` say why it stopped, like a non-streaming call.
+- A terminal event the OpenRouter SDK can't validate becomes `response.failed`, without a `response`. Any other event it can't validate is a `CustomProviderEvent`, with the native event name in `provider_type` and the payload in `raw_event.raw`.
+
 ## Notes
 
-- The stream is a generator backed by the OpenAI SDK's `responses.stream(...)` or the Anthropic SDK's `messages.stream(...)` context manager. The HTTP connection closes when you finish iterating, or when the generator is garbage-collected if you `break` early.
+- The stream is a generator backed by the OpenAI SDK's `responses.stream(...)` the Anthropic SDK's `messages.stream(...)`, or the OpenRouter SDK's `responses.send(stream=True)` context manager. The HTTP connection closes when you finish iterating, or when the generator is garbage-collected if you `break` early.
 - Consume the whole stream before you use `completed`. If you stop early, you don't get a `response.completed` event.
 - `CustomProviderEvent` passes through every native event that Tessaract doesn't model. Ignore it, or check `event.provider_type` / `event.raw_event` for provider-specific handling:
 

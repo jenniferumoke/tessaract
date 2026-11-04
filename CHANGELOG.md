@@ -26,7 +26,7 @@ Stream events changed the same way:
 
 ### Added
 
-- `OpenRouterProvider` and `OpenRouterAdapter`, built on the OpenRouter Python SDK (`tessaract[openrouter]`), with `OpenRouterResponse` and its `cost`. This first version covers non-streaming responses, function tools, `ProviderTool`s and reasoning, including encrypted reasoning that replays across turns. Streaming, prompt caching and the canonical server tools come later.
+- `OpenRouterProvider` and `OpenRouterAdapter`, built on the OpenRouter Python SDK (`tessaract[openrouter]`), with `OpenRouterResponse` and its `cost`. It covers streaming and non-streaming responses, function tools, `ProviderTool`s and reasoning, including encrypted reasoning that replays across turns. Prompt caching and the canonical server tools come later.
 - `"openrouter"` is accepted as the provider of `ProviderTool`, `ProviderToolResult` and `Annotation`.
 - `WebSearchTool` and `UserLocation`: web search on both providers, returned as `WebSearchCallOutputItem`s.
 - `ComputerUseTool` and `ComputerToolResult`: computer use on both providers, with one canonical action set in `tessaract.types.computer_actions`.

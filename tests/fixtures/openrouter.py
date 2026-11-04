@@ -52,6 +52,11 @@ def message(text: str, annotations: list[dict] | None = None) -> dict[str, Any]:
     }
 
 
+def stream(*events: dict[str, Any]) -> list[dict[str, Any]]:
+    '''Numbers events the way the API does, ready to serve as a stream.'''
+    return [{"sequence_number": index, **event} for index, event in enumerate(events)]
+
+
 def usage(**overrides) -> dict[str, Any]:
     return {
         "input_tokens": 120,

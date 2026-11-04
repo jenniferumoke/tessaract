@@ -200,11 +200,6 @@ def test_canonical_server_and_client_tools_are_not_supported_yet(openrouter_clie
         openrouter_client.send(model=MODEL, input="hi", tools=[tool])
 
 
-def test_streaming_is_not_supported_yet(openrouter_client):
-    with pytest.raises(NotImplementedError, match="Streaming"):
-        openrouter_client.send(model=MODEL, input="hi", stream=True)
-
-
 @pytest.mark.parametrize(
     "kwargs",
     [

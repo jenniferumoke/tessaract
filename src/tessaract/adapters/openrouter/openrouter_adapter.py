@@ -28,7 +28,21 @@ from ...types.response import (
     ResponseStatus,
     Usage,
 )
-from ...types.streaming.event_types import StreamEventUnion
+from ...types.streaming.event_types import (
+    CustomProviderEvent,
+    FunctionCallArgumentDeltaEvent,
+    OutputItemCompletedEvent,
+    ReasoningStartedEvent,
+    ReasoningSummaryDeltaEvent,
+    ReasoningTextDeltaEvent,
+    ResponseCompletedEvent,
+    ResponseFailedEvent,
+    ResponseStartedEvent,
+    ServerToolCallStartedEvent,
+    StreamEventUnion,
+    TextDeltaEvent,
+    ToolCallStartedEvent,
+)
 from ..adapter import (
     Adapter,
     AssistantMessageProtocol,
@@ -44,6 +58,16 @@ from ..adapter import (
 # its encrypted content (or Anthropic's signature) comes back with the response
 ENCRYPTED_REASONING_INCLUDE = "reasoning.encrypted_content"
 
+_HOSTED_TOOL_CALL_ITEMS = {
+    "web_search_call": "web_search",
+    "file_search_call": "file_search",
+    "code_interpreter_call": "code_interpreter",
+    "image_generation_call": "image_generation",
+}
+
+# the events that end a stream, which must not end up as a CustomProviderEvent
+_TERMINAL_EVENTS = {"response.completed", "response.incomplete", "response.failed", "error"}
+
 
 def _value(value: Any) -> Any:
     '''The SDK marks fields the response left out with an Unset object; they read as None here.'''
@@ -53,7 +77,7 @@ def _value(value: Any) -> Any:
 class OpenRouterAdapter(Adapter):
     '''Translates canonical types to and from OpenRouter's Responses API, through the OpenRouter SDK.
 
-        Not supported yet: streaming, prompt caching, and the canonical server and client tools
+        Not supported yet: prompt caching, and the canonical server and client tools
         (WebSearchTool, ComputerUseTool, ShellTool). ProviderTool definitions are sent unchanged.
 
         The SDK validates every request against its own models: native fields it doesn't model are
@@ -393,4 +417,139 @@ class OpenRouterAdapter(Adapter):
         return self._normalize_response(raw_response)
 
     def generate_stream(self, request: Request) -> Iterator[StreamEventUnion]:
-        raise self._not_supported_yet("Streaming (stream=True)")
+        kwargs = self._build_request_kwargs(request)
+
+        with self._client.responses.send(**kwargs, stream=True) as stream:
+            for raw_event in stream:
+                yield from self._normalize_stream_event(raw_event)
+
+    def _server_tool_name(self, item) -> str | None:
+        '''The tool name of a call OpenRouter or the model's upstream provider runs, or None for any other item.'''
+        if item.type in _HOSTED_TOOL_CALL_ITEMS:
+            return _HOSTED_TOOL_CALL_ITEMS[item.type]
+
+        if item.type.startswith("openrouter:") and item.type != "openrouter:armor_blocked":
+            return item.type.removeprefix("openrouter:")
+
+        return None
+
+    def _normalize_unknown_event(self, event) -> StreamEventUnion:
+        '''An event the SDK couldn't validate. It keeps the payload in .raw, under the type "UNKNOWN".'''
+        native = event.raw
+        provider_type = native.get("type", "unknown")
+
+        if provider_type not in _TERMINAL_EVENTS:
+            return CustomProviderEvent(provider_type=provider_type, raw_event=event)
+
+        # the stream ends here, so this can't pass through as if nothing happened
+        details = native.get("error") or (native.get("response") or {}).get("error") or native
+        message = details.get("message") or f"The OpenRouter SDK couldn't read a {provider_type} event."
+        code = details.get("code")
+
+        return ResponseFailedEvent(
+            message=message,
+            error=ResponseError(message=message, code=str(code) if code is not None else None),
+            raw_event=event,
+        )
+
+    def _normalize_stream_event(self, event) -> Iterator[StreamEventUnion]:
+        if getattr(event, "is_unknown", False):
+            yield self._normalize_unknown_event(event)
+            return
+
+        match event.type:
+            case "response.created":
+                yield ResponseStartedEvent(raw_event=event)
+
+            # a response cut short still ends normally, with its incomplete_reason, as it does without streaming
+            case "response.completed" | "response.incomplete":
+                yield ResponseCompletedEvent(
+                    response=self._normalize_response(event.response),
+                    raw_event=event,
+                )
+
+            case "response.failed":
+                response = self._normalize_response(event.response)
+                error = response.error or ResponseError(message="Response failed")
+                yield ResponseFailedEvent(
+                    message=error.message,
+                    error=error,
+                    response=response,
+                    raw_event=event,
+                )
+
+            case "error":
+                yield ResponseFailedEvent(
+                    message=event.message,
+                    error=ResponseError(message=event.message, code=event.code),
+                    raw_event=event,
+                )
+
+            case "response.output_item.added" if event.item.type == "function_call":
+                yield ToolCallStartedEvent(
+                    call_id=event.item.call_id,
+                    name=event.item.name,
+                    output_index=event.output_index,
+                    raw_event=event,
+                )
+
+            # started from the item, since models that only return reasoning text have no summary parts
+            case "response.output_item.added" if event.item.type == "reasoning":
+                yield ReasoningStartedEvent(
+                    item_id=event.item.id,
+                    output_index=event.output_index,
+                    raw_event=event,
+                )
+
+            case "response.output_item.added" if (tool_name := self._server_tool_name(event.item)) and event.item.id:
+                yield ServerToolCallStartedEvent(
+                    call_id=event.item.id,
+                    name=tool_name,
+                    output_index=event.output_index,
+                    raw_event=event,
+                )
+
+            case "response.output_item.done":
+                yield OutputItemCompletedEvent(
+                    item=self._normalize_output_item(event.item),
+                    output_index=event.output_index,
+                    raw_event=event,
+                )
+
+            case "response.output_text.delta":
+                yield TextDeltaEvent(
+                    delta=event.delta,
+                    provider="openrouter",
+                    output_index=event.output_index,
+                    content_index=event.content_index,
+                    item_id=event.item_id,
+                    raw_event=event,
+                )
+
+            case "response.reasoning_summary_text.delta":
+                yield ReasoningSummaryDeltaEvent(
+                    delta=event.delta,
+                    output_index=event.output_index,
+                    item_id=event.item_id,
+                    raw_event=event,
+                )
+
+            case "response.reasoning_text.delta":
+                yield ReasoningTextDeltaEvent(
+                    delta=event.delta,
+                    output_index=event.output_index,
+                    content_index=event.content_index,
+                    item_id=event.item_id,
+                    raw_event=event,
+                )
+
+            case "response.function_call_arguments.delta":
+                yield FunctionCallArgumentDeltaEvent(
+                    delta=event.delta,
+                    output_index=event.output_index,
+                    item_id=event.item_id,
+                    raw_event=event,
+                )
+
+            case _:
+                yield CustomProviderEvent(provider_type=event.type, raw_event=event)
