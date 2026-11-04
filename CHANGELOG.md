@@ -41,5 +41,6 @@ Stream events changed the same way:
 
 ### Fixed
 
+- OpenAI streaming: a response cut short, e.g. by `max_tokens`, ended with a `custom_provider_event` (`response.incomplete`) and no terminal event. It now ends with `response.completed`, whose `response` has `status` and `incomplete_reason` set, like a non-streaming call. Code that looked for that `custom_provider_event` must check the response instead.
 - OpenAI: native tools in `request_options={"tools": [...]}` were overwritten by an empty `tools` list when `tools=` wasn't set.
 - Anthropic streaming: `input_json_delta` events of server tool calls were reported as `tool_arguments.delta`.

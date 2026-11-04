@@ -640,7 +640,8 @@ class OpenAIAdapter(Adapter):
                     raw_event=event
                 )
 
-            case "response.completed":
+            # a response cut short still ends normally, with its incomplete_reason, as it does without streaming
+            case "response.completed" | "response.incomplete":
                 yield ResponseCompletedEvent(
                     response=self._normalize_response(event.response),
                     raw_event=event

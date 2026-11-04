@@ -23,7 +23,7 @@ Every event has a `type` string that you can branch on, and a `raw_event` field 
 | `server_tool_call.started` | `ServerToolCallStartedEvent` | The model starts a call to a tool the provider runs, such as web search, or a shell command in a provider container (`name="shell"`, on both OpenAI and Anthropic) | `call_id`, `name`, `output_index` |
 | `tool_arguments.delta` | `FunctionCallArgumentDeltaEvent` | A chunk of a function call's JSON arguments arrives | `delta`, `output_index` |
 | `output_item.done` | `OutputItemCompletedEvent` | An output item is complete | `item` (a fully typed [output item](api-reference.md#output-items)) |
-| `response.completed` | `ResponseCompletedEvent` | The response is finished | `response` (a full `Response`) |
+| `response.completed` | `ResponseCompletedEvent` | The response is finished, including one cut short: check `response.status` and `response.incomplete_reason` | `response` (a full `Response`) |
 | `response.failed` | `ResponseFailedEvent` | The response failed, or the provider sent an error event | `message`, `error` (`ResponseError` with `message` and `code`), `response` (when available) |
 | `custom_provider_event` | `CustomProviderEvent` | Any provider event without a canonical equivalent, e.g. `response.in_progress` or `response.output_text.done` | `provider_type` (the native event name), `raw_event` |
 
@@ -116,7 +116,6 @@ The complete runnable version is [`examples/streaming_agent.py`](https://github.
 OpenRouter's events follow the OpenAI ones, with these differences:
 
 - `reasoning.started` fires once per reasoning item, when the item is added, because models that return only reasoning text have no summary parts. `response.reasoning_summary_part.added` is a `CustomProviderEvent`.
-- `response.incomplete` becomes `response.completed`, and the response's `status` and `incomplete_reason` say why it stopped, like a non-streaming call.
 - A terminal event the OpenRouter SDK can't validate becomes `response.failed`, without a `response`. Any other event it can't validate is a `CustomProviderEvent`, with the native event name in `provider_type` and the payload in `raw_event.raw`.
 
 ## Notes
