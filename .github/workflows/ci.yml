@@ -29,12 +29,21 @@ jobs:
           python -m build
           python -m twine check --strict dist/*
 
-      - name: Install built wheel with OpenAI support
-        run: python -m pip install "$(printf '%s\n' dist/*.whl)[openai]"
-
-      - name: Check installed package
+      - name: Check the built wheel with no extras, then with each extra on its own
         run: |
-          python -I -c 'from tessaract import OpenAIProvider, Tessaract; client = Tessaract({"oai": OpenAIProvider(api_key="test")}); print("Installed package works:", client.__class__.__name__)'
+          wheel="$(printf '%s\n' dist/*.whl)"
+
+          python -m venv .venv-none
+          .venv-none/bin/python -m pip install "$wheel"
+          .venv-none/bin/python -I -c 'import tessaract; print("Installed package works with no extras")'
+
+          for extra in openai:OpenAIProvider anthropic:AnthropicProvider openrouter:OpenRouterProvider; do
+            name="${extra%%:*}"
+            provider="${extra##*:}"
+            python -m venv ".venv-$name"
+            ".venv-$name/bin/python" -m pip install "$wheel[$name]"
+            ".venv-$name/bin/python" -I -c "from tessaract import $provider, Tessaract; client = Tessaract({'p': $provider(api_key='test')}); print('Installed package works with $name:', client.__class__.__name__)"
+          done
   
   test:
     runs-on: ubuntu-latest

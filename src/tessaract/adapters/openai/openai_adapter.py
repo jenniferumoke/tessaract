@@ -1,10 +1,7 @@
 import base64
 import json
 from collections.abc import Iterator, Sequence
-from typing import Any, cast
-
-from openai import Omit
-from openai.types.shared_params import Reasoning as OpenAIReasoningParams
+from typing import TYPE_CHECKING, Any, cast
 
 from ...errors import UnsupportedToolOptionError
 from ...providers.openai_provider import OpenAIProvider
@@ -64,6 +61,10 @@ from ..adapter import (
     AssistantMessageProtocol
 )
 
+if TYPE_CHECKING:
+    from openai import Omit
+    from openai.types.shared_params import Reasoning as OpenAIReasoningParams
+
 # Without this include, web_search_call items come back without their sources
 WEB_SEARCH_SOURCES_INCLUDE = "web_search_call.action.sources"
 
@@ -110,8 +111,10 @@ class OpenAIAdapter(Adapter):
     def map_assistant_message(self, item: AssistantMessageProtocol):
         return item.raw
 
-    def map_reasoning_params(self, reasoning: ReasoningParamsProtocol | None) -> OpenAIReasoningParams | Omit | None:
+    def map_reasoning_params(self, reasoning: ReasoningParamsProtocol | None) -> "OpenAIReasoningParams | Omit | None":
         if reasoning is None:
+            from openai import Omit
+
             return Omit()
 
         if reasoning.budget is not None:
@@ -149,7 +152,7 @@ class OpenAIAdapter(Adapter):
             )
 
         # native_options add native reasoning fields; the typed fields win
-        return cast(OpenAIReasoningParams, {**(reasoning.native_options or {}), **native_reasoning})
+        return cast("OpenAIReasoningParams", {**(reasoning.native_options or {}), **native_reasoning})
 
     def map_cache_params(self, cache: CacheParamsProtocol | None) -> dict[str, Any]:
         '''Maps CacheOptions.mode to prompt_cache_options.mode and key to prompt_cache_key.
