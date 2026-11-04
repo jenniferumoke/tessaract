@@ -287,7 +287,19 @@ Provider differences to know about:
 - Anthropic returns each search as a `server_tool_use` block followed by a `web_search_tool_result` block. Tessaract merges the pair into one `WebSearchCallOutputItem`, and `raw` holds both blocks, which are replayed unchanged. When parallel searches interleave their blocks, each block stays its own item so the native order is kept.
 - A long server-tool turn on Anthropic can pause (`incomplete_reason` is `"paused"`). Append the output to the history and send it again to let the model continue. A search that hadn't finished has `status="in_progress"`.
 
-`Usage.server_tool_requests` counts server tool calls by tool name. Anthropic reports these counts; for OpenAI they are the `web_search_call` items in the output.
+`Usage.server_tool_requests` counts server tool calls by tool name. Anthropic reports these counts; for OpenAI and OpenRouter they are counted from the items in the output.
+
+On OpenRouter, `WebSearchTool` maps to `openrouter:web_search`, which works on any model:
+
+| Option | OpenRouter |
+| --- | --- |
+| `allowed_domains` | `parameters.allowed_domains` |
+| `blocked_domains` | `parameters.excluded_domains` |
+| `max_uses` | `parameters.max_uses`. OpenRouter's own search engines apply it; of the native searches, only Anthropic's does |
+| `user_location` | `parameters.user_location` |
+| `cache` | not supported yet (raises `NotImplementedError`) |
+
+`provider_options` go into `parameters`, e.g. `{"engine": "exa", "max_results": 3}`. A `"type"` raises `UnsupportedToolOptionError`; use a `ProviderTool` for another native definition. Sources aren't always listed on the call; the text's `url_citation` annotations cite the pages used. To ask a model's native OpenAI search for its sources, pass `request_options={"include": ["web_search_call.action.sources"]}`.
 
 ### Other provider tools (`ProviderTool`)
 
@@ -454,6 +466,12 @@ Options a provider doesn't support raise `UnsupportedToolOptionError`. On Anthro
 - `ShellCallOutputItem.file_ids` lists the files a command left in the container's output directory, for the Files API. `error` holds the error code when the call failed; `"execution_time_exceeded"` also gives a timed-out output.
 - Code execution can also view and edit files. Those `text_editor_code_execution` calls come back as `ProviderOutputItem`s.
 - One request uses one container, so all `ShellTool`s with a `ContainerEnvironment` in a request must have the same one.
+
+On OpenRouter, a `ShellTool` with a `ContainerEnvironment` maps to `openrouter:shell`, which uses OpenAI's hosted shell on OpenAI models and OpenRouter's sandbox on the others. A local `ShellTool` isn't supported yet.
+
+- `container_id`, `file_ids` and `allowed_domains` work as on OpenAI. `memory_limit` raises `UnsupportedToolOptionError`. Containers have no network access unless you set `allowed_domains`.
+- `ShellTool.provider_options` go into `parameters`, e.g. `{"engine": "openrouter"}` to always use the sandbox. `ContainerEnvironment.provider_options` are merged into the environment.
+- A call comes back as one `openrouter:shell` item, or a `shell_call` and a `shell_call_output`. Both give one `ShellCallOutputItem` and replay unchanged. A failed call has `status="incomplete"` and its `error` set.
 
 When streaming, a provider-managed call starts with a `server_tool_call.started` event (`name="shell"`), not `tool_call.started`, and its `output_item.done` arrives with its output.
 

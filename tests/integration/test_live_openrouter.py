@@ -13,12 +13,15 @@ import os
 import pytest
 
 from tessaract import (
+    ContainerEnvironment,
     FunctionTool,
     FunctionToolResult,
     InputSchema,
     Property,
     ReasoningOptions,
+    ShellTool,
     Tessaract,
+    WebSearchTool,
 )
 
 pytestmark = pytest.mark.live
@@ -120,3 +123,55 @@ def test_streaming_reasoning_tool_call_round_trip(live):
     events = list(_send(client, model, family, history, stream=True))
     assert events[-1].type == "response.completed", f"the stream ended with {events[-1]}"
     assert "19" in "".join(event.delta for event in events if event.type == "text.delta")
+
+
+def _server_tool_turn(client, model, tool, question, stream):
+    """Runs a question with a server tool, then a follow-up that replays its output."""
+    history: list = [question]
+
+    def send():
+        result = client.send(model=model, input=history, tools=[tool], max_tokens=4096, stream=stream)
+        if not stream:
+            return result, []
+        events = list(result)
+        assert events[-1].type == "response.completed", f"the stream ended with {events[-1]}"
+        return events[-1].response, events
+
+    response, events = send()
+    history.extend(response.output)
+    history.append("Now say only the word done.")
+    follow_up, _ = send()
+    assert follow_up.output_text
+
+    return response, events
+
+
+@pytest.mark.parametrize("stream", [False, True], ids=["sync", "stream"])
+def test_web_search_round_trip(live, stream):
+    client, model, _ = live
+
+    response, events = _server_tool_turn(
+        client, model, WebSearchTool(max_uses=1), "Search the web: what is the latest Python release?", stream,
+    )
+
+    assert any(item.type == "web_search_call" for item in response.output), response.output
+    assert response.usage is not None and response.usage.server_tool_requests["web_search"] >= 1
+    if stream:
+        assert any(event.type == "server_tool_call.started" and event.name == "web_search" for event in events)
+
+
+@pytest.mark.parametrize("stream", [False, True], ids=["sync", "stream"])
+def test_container_shell_round_trip(live, stream):
+    client, model, _ = live
+
+    response, events = _server_tool_turn(
+        client, model, ShellTool(environment=ContainerEnvironment()), "Use the shell to run: echo tessaract", stream,
+    )
+
+    calls = [item for item in response.output if item.type == "shell_call"]
+    assert calls, response.output
+    assert calls[0].executed_by == "provider"
+    assert any("tessaract" in output.stdout for call in calls for output in call.output)
+    assert response.container_id
+    if stream:
+        assert any(event.type == "server_tool_call.started" and event.name == "shell" for event in events)

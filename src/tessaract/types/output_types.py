@@ -66,14 +66,14 @@ class WebSearchCallOutputItem(OutputItem):
     '''
     type: Literal["web_search_call"] = "web_search_call"
     call_id: str
-    status: Literal["in_progress", "searching", "completed", "failed"]
+    status: Literal["in_progress", "searching", "completed", "failed", "incomplete"]
     action: str = "search"
     queries: list[str] = Field(default_factory=list)
     url: str | None = None
     pattern: str | None = None
     sources: list[WebSource] = Field(default_factory=list)
     error: str | None = None
-    provider: Literal["anthropic", "openai"]
+    provider: Literal["anthropic", "openai", "openrouter"]
 
 class SafetyCheck(BaseModel):
     '''A check the provider wants you to confirm before running a computer call (OpenAI only).
@@ -131,7 +131,7 @@ class ShellCallOutputItem(OutputItem):
     max_output_length: int | None = None
     restart: bool = False
     status: Literal["in_progress", "completed", "incomplete"] | None = None
-    provider: Literal["anthropic", "openai"]
+    provider: Literal["anthropic", "openai", "openrouter"]
 
 class ProviderOutputItem(OutputItem):
     type: Literal["provider_output"] = "provider_output"

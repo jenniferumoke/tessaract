@@ -192,10 +192,10 @@ def test_request_options_are_sent_and_canonical_parameters_win(openrouter_client
 
 @pytest.mark.parametrize(
     "tool",
-    [WebSearchTool(), ComputerUseTool(display_width=1024, display_height=768), ShellTool()],
-    ids=["web_search", "computer", "shell"],
+    [ComputerUseTool(display_width=1024, display_height=768), ShellTool()],
+    ids=["computer", "local_shell"],
 )
-def test_canonical_server_and_client_tools_are_not_supported_yet(openrouter_client, tool):
+def test_canonical_client_tools_are_not_supported_yet(openrouter_client, tool):
     with pytest.raises(NotImplementedError, match="OpenRouter adapter"):
         openrouter_client.send(model=MODEL, input="hi", tools=[tool])
 
