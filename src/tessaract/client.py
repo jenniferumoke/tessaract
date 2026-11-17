@@ -1,8 +1,8 @@
 from collections.abc import Iterator, Sequence
 from typing import TYPE_CHECKING, Any, Literal, TypeAlias, overload
 
-from .adapters import AnthropicAdapter, OpenAIAdapter
-from .providers import AnthropicProvider, OpenAIProvider
+from .adapters import AnthropicAdapter, OpenAIAdapter, OpenRouterAdapter
+from .providers import AnthropicProvider, OpenAIProvider, OpenRouterProvider
 from .tools import Tool
 from .types.input_types import InputType, UserMessage
 from .types.output_types import AssistantMessage, OutputItem
@@ -13,14 +13,15 @@ from .types.streaming.event_types import StreamEventUnion
 if TYPE_CHECKING:
     from .adapters.anthropic.anthropic_adapter import AnthropicAdapter
     from .adapters.openai.openai_adapter import OpenAIAdapter
+    from .adapters.openrouter.openrouter_adapter import OpenRouterAdapter
 
 InputItem: TypeAlias = str | InputType | AssistantMessage | OutputItem
 Input: TypeAlias = str | Sequence[InputItem]
 
 class Tessaract:
-    def __init__(self, providers: dict[str, OpenAIProvider | AnthropicProvider]):
+    def __init__(self, providers: dict[str, OpenAIProvider | AnthropicProvider | OpenRouterProvider]):
         self.providers = providers
-        self.adapters: dict[str, OpenAIAdapter | AnthropicAdapter] = {}
+        self.adapters: dict[str, OpenAIAdapter | AnthropicAdapter | OpenRouterAdapter] = {}
         self.register_adapter()
 
     def register_adapter(self):
@@ -29,6 +30,8 @@ class Tessaract:
                 adapter = OpenAIAdapter(provider)
             elif isinstance(provider, AnthropicProvider):
                 adapter = AnthropicAdapter(provider)
+            elif isinstance(provider, OpenRouterProvider):
+                adapter = OpenRouterAdapter(provider)
             else:
                 raise NotImplementedError("not yet implemented")
             self.adapters[prefix] = adapter
@@ -155,6 +158,8 @@ class Tessaract:
 
             Args:
                 model: "<provider prefix>/<model name>", e.g. "oai/gpt-5.6-luna" or "ant/claude-opus-5-5".
+                    Only the first "/" separates the prefix, so OpenRouter models keep theirs, e.g.
+                    "or/anthropic/claude-sonnet-5.5".
                 input: a string, or a list of strings, input items and output items from earlier responses.
                 stream: return an iterator of stream events instead of a Response.
                 reasoning: canonical reasoning options, mapped to each provider's native parameters.

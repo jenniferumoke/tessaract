@@ -12,7 +12,7 @@ class TextDeltaEvent(BaseModel):
 
     delta: str
 
-    provider: Literal["openai", "anthropic"]
+    provider: Literal["openai", "anthropic", "openrouter"]
     response_id: str | None = None
 
     output_index: int | None = None

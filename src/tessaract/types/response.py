@@ -14,6 +14,7 @@ from .output_types import (
 if TYPE_CHECKING:
     from anthropic.types import Usage as AnthropicUsage
     from openai.types.responses.response_usage import ResponseUsage
+    from openrouter.components.openresponsesresult import Usage as OpenRouterUsage
 
 
 @dataclass
@@ -66,7 +67,7 @@ class Usage:
 class Response:
     id: str
     model: str
-    provider: Literal["anthropic", "openai"] | None = None
+    provider: Literal["anthropic", "openai", "openrouter"] | None = None
 
     # keyword-only so the positional order of the other fields is unchanged
     status: ResponseStatus | None = field(default=None, kw_only=True)
@@ -142,3 +143,22 @@ class AnthropicResponse(Response):
     def cached_input_tokens(self) -> int | None:
         return self.usage.cached_input_tokens if self.usage is not None else None
 
+
+@dataclass
+class OpenRouterResponse(Response):
+    provider: Literal["openrouter"] = "openrouter"  # pyright: ignore[reportIncompatibleVariableOverride]
+    provider_usage: OpenRouterUsage | None = field(default=None, repr=False)
+
+    @property
+    def input_tokens(self) -> int | None:
+        return self.usage.input_tokens if self.usage is not None else None
+
+    @property
+    def cached_input_tokens(self) -> int | None:
+        return self.usage.cached_input_tokens if self.usage is not None else None
+
+    @property
+    def cost(self) -> float | None:
+        '''What OpenRouter charged for the request, in credits (US dollars). None when it isn't reported.'''
+        cost = getattr(self.provider_usage, "cost", None)
+        return cost if isinstance(cost, (int, float)) else None

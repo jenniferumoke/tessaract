@@ -49,7 +49,8 @@ class ShellTool(BaseModel):
             executed_by="provider" and their output, and need no result.
 
         Maps to OpenAI's shell tool, and to Anthropic's bash_20250124 tool for a local environment or its
-        code_execution_20250825 tool for a container.
+        code_execution_20250825 tool for a container. On OpenRouter it maps to openrouter:shell for a
+        container; a local environment raises UnsupportedToolOptionError, since commands never run on the client.
 
         cache: add a cache breakpoint to the tool definition. Anthropic only; OpenAI caches automatically.
         provider_options: native tool fields. On OpenAI, the fields of "environment" are merged into

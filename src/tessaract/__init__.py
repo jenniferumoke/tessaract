@@ -2,6 +2,7 @@ from .adapters.anthropic.anthropic_adapter import DEFAULT_ANTHROPIC_MAX_TOKENS
 from .client import Tessaract
 from .providers.anthropic_provider import AnthropicProvider
 from .providers.openai_provider import OpenAIProvider
+from .providers.openrouter_provider import OpenRouterProvider
 from .errors import UnsupportedToolOptionError
 from .tools import (
     ComputerUseTool,
@@ -37,6 +38,7 @@ __all__ = [
     "FunctionToolResult",
     "InputSchema",
     "OpenAIProvider",
+    "OpenRouterProvider",
     "Property",
     "ProviderTool",
     "ProviderToolResult",

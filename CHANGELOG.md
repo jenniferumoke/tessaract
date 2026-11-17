@@ -26,6 +26,8 @@ Stream events changed the same way:
 
 ### Added
 
+- `OpenRouterProvider` and `OpenRouterAdapter`, built on the OpenRouter Python SDK (`tessaract[openrouter]`), with `OpenRouterResponse` and its `cost`. It covers streaming and non-streaming responses, function tools, `ProviderTool`s and reasoning, including encrypted reasoning that replays across turns. `WebSearchTool` and a `ShellTool` with a `ContainerEnvironment` map to OpenRouter's server tools. `ComputerUseTool` and a local `ShellTool` raise `UnsupportedToolOptionError`, since OpenRouter has no native equivalent. Prompt caching comes later.
+- `"openrouter"` is accepted as the provider of `ProviderTool`, `ProviderToolResult` and `Annotation`.
 - `WebSearchTool` and `UserLocation`: web search on both providers, returned as `WebSearchCallOutputItem`s.
 - `ComputerUseTool` and `ComputerToolResult`: computer use on both providers, with one canonical action set in `tessaract.types.computer_actions`.
 - `ShellTool`, `ShellToolResult` and `ShellCommandOutput`: a shell your code runs, on both providers.
@@ -39,5 +41,7 @@ Stream events changed the same way:
 
 ### Fixed
 
+- `import tessaract` failed with `ModuleNotFoundError: No module named 'openai'` when the `openai` extra wasn't installed, so `tessaract[anthropic]` on its own didn't work.
+- OpenAI streaming: a response cut short, e.g. by `max_tokens`, ended with a `custom_provider_event` (`response.incomplete`) and no terminal event. It now ends with `response.completed`, whose `response` has `status` and `incomplete_reason` set, like a non-streaming call. Code that looked for that `custom_provider_event` must check the response instead.
 - OpenAI: native tools in `request_options={"tools": [...]}` were overwritten by an empty `tools` list when `tools=` wasn't set.
 - Anthropic streaming: `input_json_delta` events of server tool calls were reported as `tool_arguments.delta`.

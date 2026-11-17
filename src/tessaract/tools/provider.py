@@ -12,5 +12,5 @@ class ProviderTool(BaseModel):
         provider is the provider the definition was written for. Sending it to a different
         provider raises, since the native shape wouldn't be valid there.
     '''
-    provider: Literal["anthropic", "openai"]
+    provider: Literal["anthropic", "openai", "openrouter"]
     definition: dict[str, Any]
